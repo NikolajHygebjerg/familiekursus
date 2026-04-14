@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import BottomNav from "./BottomNav";
+import AddToHomeScreenGuide from "./AddToHomeScreenGuide";
 
 const PUBLIC_PATHS = ["/login", "/workshop-tilmelding"];
 
@@ -52,6 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           Log ud
         </button>
       </header>
+      <AddToHomeScreenGuide />
       <div className="pb-20">{children}</div>
       <BottomNav />
     </>

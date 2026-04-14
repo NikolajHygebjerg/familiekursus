@@ -46,7 +46,7 @@ export default function LoginPage() {
     });
   }, []);
 
-  const emailSuggestions = [...new Set([...emailHistory, ...airtableEmails])]
+  const emailSuggestions = Array.from(new Set([...emailHistory, ...airtableEmails]))
     .filter((h) => h.toLowerCase().includes(email.trim().toLowerCase()))
     .slice(0, 12);
 
