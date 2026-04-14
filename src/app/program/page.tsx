@@ -95,7 +95,7 @@ function ProgramListItem({
           ) : (
             <span className="font-medium text-slate-800">{displayTitel}</span>
           )}
-          {showFamilyWorkshops && item.workshopSlot && item.beskrivelse && (
+          {showFamilyWorkshops && item.workshopSlot && item.beskrivelse && !linksToTilmeld && (
             <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
               {item.beskrivelse}
             </pre>
