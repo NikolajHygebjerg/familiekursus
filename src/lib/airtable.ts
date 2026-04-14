@@ -86,8 +86,8 @@ function getWorkshopValues(record: AirtableRecord, possibleNames: string[]): str
 // Feltnavne for Familie og Navn (Betalt kan bruge andre navne)
 const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
-const FAMILIELOEB_HOLD_FIELDS = ["A Holdnavn", "Holdnavn", "Hold", "A Hold"];
-const FAMILIELOEB_MEDLEMMER_FIELDS = ["A Medlemmer", "Medlemmer"];
+const FAMILIELOEB_HOLD_FIELDS = ["Holdnavn", "A Holdnavn", "Hold", "A Hold"];
+const FAMILIELOEB_MEDLEMMER_FIELDS = ["Medlemmer", "A Medlemmer"];
 
 function getFieldValue(record: AirtableRecord, possibleNames: string[]): string | null {
   for (const name of possibleNames) {
