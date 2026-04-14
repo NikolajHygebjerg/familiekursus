@@ -5,6 +5,7 @@ const TABLE_BETALT = "Betalt";
 const TABLE_PROGRAM = "Program";
 const TABLE_BRUGERE = "Brugere";
 const TABLE_WORKSHOPOVERSIGT = "Workshopoversigt";
+const TABLE_FAMILIELOEB = "Familieløbet";
 
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
 
@@ -85,6 +86,8 @@ function getWorkshopValues(record: AirtableRecord, possibleNames: string[]): str
 // Feltnavne for Familie og Navn (Betalt kan bruge andre navne)
 const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
+const FAMILIELOEB_HOLD_FIELDS = ["A Holdnavn", "Holdnavn", "Hold", "A Hold"];
+const FAMILIELOEB_MEDLEMMER_FIELDS = ["A Medlemmer", "Medlemmer"];
 
 function getFieldValue(record: AirtableRecord, possibleNames: string[]): string | null {
   for (const name of possibleNames) {
@@ -609,6 +612,130 @@ export interface MissingWorkshopItem {
   navn: string;
 }
 
+interface FamilyRaceMember {
+  navn: string;
+  alder: number | null;
+}
+
+interface FamilyRaceFamily {
+  familie: string;
+  members: FamilyRaceMember[];
+}
+
+interface FamilyRaceHold {
+  holdnavn: string;
+  families: FamilyRaceFamily[];
+  count: number;
+  childAgeBuckets: Set<string>;
+}
+
+export interface FamilyRaceInfo {
+  holdnavn: string;
+  membersText: string;
+}
+
+function toAgeBucket(age: number): string {
+  if (age <= 5) return "3-5";
+  if (age <= 8) return "6-8";
+  if (age <= 11) return "9-11";
+  if (age <= 14) return "12-14";
+  return "15+";
+}
+
+function parseAge(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = parseInt(raw.trim(), 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+function memberLine(member: FamilyRaceMember): string {
+  return member.alder !== null ? `${member.navn} (${member.alder} år)` : member.navn;
+}
+
+function familyLine(family: FamilyRaceFamily): string {
+  const members = family.members.map(memberLine).join(", ");
+  return `${family.familie}: ${members}`;
+}
+
+function holdMembersText(hold: FamilyRaceHold): string {
+  return hold.families
+    .slice()
+    .sort((a, b) => a.familie.localeCompare(b.familie))
+    .map(familyLine)
+    .join("\n");
+}
+
+function chooseHoldCount(totalParticipants: number): number {
+  if (totalParticipants <= 0) return 1;
+  const minHolds = Math.max(1, Math.ceil(totalParticipants / 12));
+  const maxHolds = Math.max(minHolds, Math.floor(totalParticipants / 10));
+  let best = minHolds;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let h = minHolds; h <= maxHolds; h++) {
+    const avg = totalParticipants / h;
+    const score = Math.abs(avg - 11);
+    if (score < bestScore) {
+      bestScore = score;
+      best = h;
+    }
+  }
+  return best;
+}
+
+function buildFamilyRaceHolds(families: FamilyRaceFamily[]): FamilyRaceHold[] {
+  const totalParticipants = families.reduce((sum, f) => sum + f.members.length, 0);
+  const holdCount = chooseHoldCount(totalParticipants);
+  const targetSize = totalParticipants / holdCount;
+  const holds: FamilyRaceHold[] = Array.from({ length: holdCount }, (_, i) => ({
+    holdnavn: `Hold ${i + 1}`,
+    families: [],
+    count: 0,
+    childAgeBuckets: new Set<string>(),
+  }));
+
+  const sortedFamilies = families
+    .slice()
+    .sort((a, b) => {
+      const aChildren = a.members.filter((m) => m.alder !== null).length;
+      const bChildren = b.members.filter((m) => m.alder !== null).length;
+      return bChildren - aChildren || b.members.length - a.members.length;
+    });
+
+  for (const family of sortedFamilies) {
+    const familyBuckets = new Set(
+      family.members
+        .filter((m) => m.alder !== null)
+        .map((m) => toAgeBucket(m.alder as number))
+    );
+
+    let bestIdx = 0;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < holds.length; i++) {
+      const hold = holds[i];
+      const newCount = hold.count + family.members.length;
+      const overCapacityPenalty = newCount > 12 ? (newCount - 12) * 100 : 0;
+      const underTargetPenalty = Math.max(0, targetSize - newCount);
+      let overlap = 0;
+      familyBuckets.forEach((b) => {
+        if (hold.childAgeBuckets.has(b)) overlap += 1;
+      });
+      const overlapBonus = overlap * 2;
+      const score = overCapacityPenalty + underTargetPenalty - overlapBonus + hold.count * 0.2;
+      if (score < bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+
+    const chosen = holds[bestIdx];
+    chosen.families.push(family);
+    chosen.count += family.members.length;
+    familyBuckets.forEach((b) => chosen.childAgeBuckets.add(b));
+  }
+
+  return holds;
+}
+
 // Normaliser navn så "Lars Alexandersen" og "Alexandersen Lars" matcher (omvendt navnestilling)
 function normaliserNavn(navn: string): string {
   const parts = navn.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -656,6 +783,79 @@ export async function getMissingWorkshopSelections(): Promise<MissingWorkshopIte
   }
 
   return missing.sort((a, b) => a.navn.localeCompare(b.navn));
+}
+
+async function getFamilyRaceFamiliesFrom2026(): Promise<FamilyRaceFamily[]> {
+  const records = await fetchTableRecords(TABLE_2026);
+  const byFamily = new Map<string, FamilyRaceMember[]>();
+
+  for (const rec of records) {
+    const familie = getFieldValue(rec, FAMILIE_FIELDS)?.trim();
+    const navn = getFieldValue(rec, NAVN_FIELDS)?.trim();
+    if (!familie || !navn) continue;
+    const alder = parseAge(getFieldValue(rec, ALDER_FIELD_OPTIONS));
+    const list = byFamily.get(familie) || [];
+    list.push({ navn, alder });
+    byFamily.set(familie, list);
+  }
+
+  return Array.from(byFamily.entries())
+    .map(([familie, members]) => ({ familie, members }))
+    .filter((f) => f.members.length > 0);
+}
+
+export async function syncFamilieloebAssignments(): Promise<FamilyRaceInfo[]> {
+  const families = await getFamilyRaceFamiliesFrom2026();
+  const holds = buildFamilyRaceHolds(families);
+
+  const fieldNames = await getTableFieldNames(TABLE_FAMILIELOEB);
+  const holdField = resolveFieldName(fieldNames, FAMILIELOEB_HOLD_FIELDS);
+  const medlemmerField = resolveFieldName(fieldNames, FAMILIELOEB_MEDLEMMER_FIELDS);
+
+  const existing = await fetchTableRecords(TABLE_FAMILIELOEB);
+  const byHoldName = new Map<string, string>();
+  for (const rec of existing) {
+    const name = getFieldValue(rec, FAMILIELOEB_HOLD_FIELDS);
+    if (name?.trim()) byHoldName.set(name.trim(), rec.id);
+  }
+
+  const infos: FamilyRaceInfo[] = [];
+  for (const hold of holds) {
+    const membersText = holdMembersText(hold);
+    const fields: Record<string, string> = {
+      [holdField]: hold.holdnavn,
+      [medlemmerField]: membersText,
+    };
+    const existingId = byHoldName.get(hold.holdnavn);
+    if (existingId) {
+      await updateAirtableRecord(TABLE_FAMILIELOEB, existingId, fields);
+    } else {
+      await createAirtableRecord(TABLE_FAMILIELOEB, fields);
+    }
+    infos.push({ holdnavn: hold.holdnavn, membersText });
+  }
+
+  return infos;
+}
+
+export async function getFamilieloebInfoByEmail(email: string): Promise<FamilyRaceInfo | null> {
+  const records = await fetchTableRecords(TABLE_2026);
+  let familyName: string | null = null;
+  for (const rec of records) {
+    const recEmail = getEmailFromRecord(rec);
+    if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
+    familyName = getFieldValue(rec, FAMILIE_FIELDS);
+    if (familyName) break;
+  }
+  if (!familyName) return null;
+
+  const assignments = await syncFamilieloebAssignments();
+  for (const hold of assignments) {
+    if (hold.membersText.toLowerCase().includes(`${familyName.toLowerCase()}:`)) {
+      return hold;
+    }
+  }
+  return null;
 }
 
 // --- Program-tabel (dagsprogrammer fra Airtable) ---

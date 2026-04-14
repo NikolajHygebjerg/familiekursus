@@ -32,6 +32,8 @@ export default function TilmeldtePage() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string; membersText: string; message: string } | null>(null);
+  const [familieloebLoading, setFamilieloebLoading] = useState(false);
 
   const displayFamily = isKursusleder ? pickedFamily : selectedFamily;
 
@@ -86,6 +88,25 @@ export default function TilmeldtePage() {
         .finally(() => setLoadingMembers(false));
     }
   }, [isKursusleder, selectedFamily, email]);
+
+  useEffect(() => {
+    if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
+      setFamilieloebInfo(null);
+      return;
+    }
+    setFamilieloebLoading(true);
+    fetch(`/api/familieloeb?email=${encodeURIComponent(selectedFamily)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.holdnavn && data?.membersText) {
+          setFamilieloebInfo(data);
+        } else {
+          setFamilieloebInfo(null);
+        }
+      })
+      .catch(() => setFamilieloebInfo(null))
+      .finally(() => setFamilieloebLoading(false));
+  }, [isKursusleder, selectedFamily]);
 
   const workshopOverview = useMemo(() => {
     const result: { slot: string; workshopName: string; participants: string[] }[] = [];
@@ -169,6 +190,26 @@ export default function TilmeldtePage() {
             <p className="font-medium">Fejl</p>
             <p className="mt-1 text-sm">{error}</p>
           </div>
+        )}
+
+        {!isKursusleder && (
+          <section className="mb-6 rounded-xl bg-white p-6 shadow-lg">
+            <h2 className="mb-3 text-xl font-semibold text-slate-800">Familieløbet</h2>
+            {familieloebLoading ? (
+              <p className="text-slate-500">Finder jeres hold...</p>
+            ) : familieloebInfo ? (
+              <div className="space-y-3">
+                <p className="font-medium text-slate-700">
+                  {familieloebInfo.message}
+                </p>
+                <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
+                  {familieloebInfo.membersText}
+                </pre>
+              </div>
+            ) : (
+              <p className="text-slate-500">Holdfordeling er ikke klar endnu.</p>
+            )}
+          </section>
         )}
 
         {loadingMembers && (
