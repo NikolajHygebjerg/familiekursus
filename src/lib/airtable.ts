@@ -347,6 +347,7 @@ const ACTIVITY_FIELD_OPTIONS: Record<string, string[]> = {
   gyserløb: ["Gyserløb", "A Gyserløb"],
   sheltertur: ["Sheltertur", "A Sheltertur"],
 };
+const WORKSHOPOVERSIGT_MAX_FIELDS = ["# Max", "Max", "A Max"];
 
 const BARN_VOKSEN_FIELDS_LIST = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
 const ALDER_FIELD_OPTIONS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
@@ -363,14 +364,61 @@ function getCurrentYear(): number {
 }
 
 export async function getAftengrupperOptions(): Promise<string[]> {
+  const detailed = await getAftengrupperOptionsDetailed();
+  return detailed.map((o) => o.name);
+}
+
+export interface AftengruppeOption {
+  name: string;
+  max: number | null;
+  current: number;
+  soldOut: boolean;
+}
+
+function parseMaxValue(raw: string | null): number | null {
+  if (!raw) return null;
+  const normalized = raw.replace(",", ".").trim();
+  const n = parseFloat(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function getAftengrupperOptionsDetailed(): Promise<AftengruppeOption[]> {
   const names = WORKSHOPOVERSIGT_OPTION_FIELDS.aftengrupper;
-  const records = await fetchTableRecords(TABLE_WORKSHOPOVERSIGT);
-  const set = new Set<string>();
-  for (const rec of records) {
+  const workshopoversigtRecords = await fetchTableRecords(TABLE_WORKSHOPOVERSIGT);
+  const yearRecords = await fetchTableRecords(getYearTableId(getCurrentYear()));
+
+  const maxByOption = new Map<string, number | null>();
+  for (const rec of workshopoversigtRecords) {
     const vals = getWorkshopValues(rec, names);
-    for (const v of vals) if (v?.trim()) set.add(v.trim());
+    if (vals.length === 0) continue;
+    const maxVal = parseMaxValue(getFieldValue(rec, WORKSHOPOVERSIGT_MAX_FIELDS));
+    for (const v of vals) {
+      const key = v.trim();
+      if (!key) continue;
+      if (!maxByOption.has(key)) maxByOption.set(key, maxVal);
+    }
   }
-  return Array.from(set).sort();
+
+  const countByOption = new Map<string, number>();
+  for (const rec of yearRecords) {
+    const selected = getFieldValue(rec, ACTIVITY_FIELD_OPTIONS.aftengrupper);
+    const key = selected?.trim();
+    if (!key) continue;
+    countByOption.set(key, (countByOption.get(key) || 0) + 1);
+    if (!maxByOption.has(key)) maxByOption.set(key, null);
+  }
+
+  const allOptions = Array.from(maxByOption.keys()).sort((a, b) => a.localeCompare(b));
+  return allOptions.map((name) => {
+    const max = maxByOption.get(name) ?? null;
+    const current = countByOption.get(name) || 0;
+    return {
+      name,
+      max,
+      current,
+      soldOut: max !== null ? current >= max : false,
+    };
+  });
 }
 
 export interface ActivityRecord {
@@ -778,8 +826,34 @@ function buildFamilyRaceHolds(families: FamilyRaceFamily[]): FamilyRaceHold[] {
 
 // Normaliser navn så "Lars Alexandersen" og "Alexandersen Lars" matcher (omvendt navnestilling)
 function normaliserNavn(navn: string): string {
-  const parts = navn.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const cleaned = navn
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ");
+  const parts = cleaned.trim().split(/\s+/).filter(Boolean);
   return parts.sort().join(" ");
+}
+
+function hasAnyWorkshopSelection(record: AirtableRecord): boolean {
+  const explicit =
+    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1) ||
+    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2) ||
+    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3) ||
+    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4) ||
+    getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
+  if (explicit) return true;
+
+  // Fallback: accepter ukendte kolonnenavne der stadig ligner workshopfelter.
+  for (const [key, raw] of Object.entries(record.fields)) {
+    const keyNorm = key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const looksLikeWorkshop =
+      keyNorm.includes("workshop") || keyNorm.includes("foraeldreworkshop");
+    if (!looksLikeWorkshop) continue;
+    if (typeof raw === "string" && raw.trim()) return true;
+    if (Array.isArray(raw) && raw.some((v) => String(v).trim())) return true;
+  }
+  return false;
 }
 
 export async function getMissingWorkshopSelections(): Promise<MissingWorkshopItem[]> {
@@ -792,14 +866,7 @@ export async function getMissingWorkshopSelections(): Promise<MissingWorkshopIte
   const navneMedWorkshops = new Set<string>();
 
   for (const record of records2026) {
-    const hasWorkshop =
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
-
-    if (hasWorkshop) {
+    if (hasAnyWorkshopSelection(record)) {
       const navn = getFieldValue(record, NAVN_FIELDS);
       if (navn) navneMedWorkshops.add(normaliserNavn(navn));
     }
