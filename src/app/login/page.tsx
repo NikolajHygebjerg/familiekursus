@@ -93,11 +93,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke oprette bruger");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false);
-      if (data.needsWorkshopRegistration) {
-        router.replace("/workshop-tilmelding");
-      } else {
-        router.replace("/");
-      }
+      router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Oprettelse fejlede");
     } finally {
@@ -151,11 +147,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke gemme kode");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false);
-      if (data.needsWorkshopRegistration) {
-        router.replace("/workshop-tilmelding");
-      } else {
-        router.replace("/");
-      }
+      router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke gemme kode");
     } finally {
