@@ -13,6 +13,18 @@ interface FamilyMember {
   voksen: string | null;
 }
 
+interface FamilieloebFamily {
+  familyName: string;
+  members: string[];
+}
+
+interface FamilieloebHold {
+  recordId: string;
+  holdnavn: string;
+  membersText: string;
+  families: FamilieloebFamily[];
+}
+
 const WORKSHOP_LABELS: Record<string, string> = {
   workshop1: "Workshop 1",
   workshop2: "Workshop 2",
@@ -34,6 +46,8 @@ export default function TilmeldtePage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string; membersText: string; message: string } | null>(null);
   const [familieloebLoading, setFamilieloebLoading] = useState(false);
+  const [familieloebHolds, setFamilieloebHolds] = useState<FamilieloebHold[]>([]);
+  const [movingFamily, setMovingFamily] = useState<{ familyName: string; fromHold: string } | null>(null);
 
   const displayFamily = isKursusleder ? pickedFamily : selectedFamily;
 
@@ -90,6 +104,16 @@ export default function TilmeldtePage() {
   }, [isKursusleder, selectedFamily, email]);
 
   useEffect(() => {
+    if (!isKursusleder) return;
+    setFamilieloebLoading(true);
+    fetch("/api/familieloeb?all=1")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setFamilieloebHolds(Array.isArray(data?.holds) ? data.holds : []))
+      .catch(() => setFamilieloebHolds([]))
+      .finally(() => setFamilieloebLoading(false));
+  }, [isKursusleder]);
+
+  useEffect(() => {
     if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
       setFamilieloebInfo(null);
       return;
@@ -107,6 +131,26 @@ export default function TilmeldtePage() {
       .catch(() => setFamilieloebInfo(null))
       .finally(() => setFamilieloebLoading(false));
   }, [isKursusleder, selectedFamily]);
+
+  const familieloebFamiliesForDisplay = useMemo(() => {
+    if (!familieloebInfo?.membersText) return [];
+    return familieloebInfo.membersText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const idx = line.indexOf(":");
+        if (idx === -1) return { familyName: line, members: [] as string[] };
+        return {
+          familyName: line.slice(0, idx).trim(),
+          members: line
+            .slice(idx + 1)
+            .split(",")
+            .map((m) => m.trim())
+            .filter(Boolean),
+        };
+      });
+  }, [familieloebInfo]);
 
   const workshopOverview = useMemo(() => {
     const result: { slot: string; workshopName: string; participants: string[] }[] = [];
@@ -190,26 +234,6 @@ export default function TilmeldtePage() {
             <p className="font-medium">Fejl</p>
             <p className="mt-1 text-sm">{error}</p>
           </div>
-        )}
-
-        {!isKursusleder && (
-          <section className="mb-6 rounded-xl bg-white p-6 shadow-lg">
-            <h2 className="mb-3 text-xl font-semibold text-slate-800">Familieløbet</h2>
-            {familieloebLoading ? (
-              <p className="text-slate-500">Finder jeres hold...</p>
-            ) : familieloebInfo ? (
-              <div className="space-y-3">
-                <p className="font-medium text-slate-700">
-                  {familieloebInfo.message}
-                </p>
-                <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
-                  {familieloebInfo.membersText}
-                </pre>
-              </div>
-            ) : (
-              <p className="text-slate-500">Holdfordeling er ikke klar endnu.</p>
-            )}
-          </section>
         )}
 
         {loadingMembers && (
@@ -308,6 +332,96 @@ export default function TilmeldtePage() {
 
         {!loadingMembers && !isKursusleder && selectedFamily && members.length === 0 && !error && (
           <p className="text-slate-500">Ingen familiemedlemmer fundet.</p>
+        )}
+
+        {!isKursusleder && (
+          <section className="mt-8 rounded-xl bg-white p-6 shadow-lg">
+            <h2 className="mb-3 text-xl font-semibold text-slate-800">Familieløbet</h2>
+            {familieloebLoading ? (
+              <p className="text-slate-500">Finder jeres hold...</p>
+            ) : familieloebInfo ? (
+              <div className="space-y-4">
+                <p className="font-medium text-slate-700">{familieloebInfo.message}</p>
+                <div className="space-y-4 text-sm text-slate-700">
+                  {familieloebFamiliesForDisplay.map((family) => (
+                    <div key={family.familyName}>
+                      <p className="font-semibold text-slate-800">{family.familyName}</p>
+                      <ul className="mt-1 space-y-1">
+                        {family.members.map((m) => (
+                          <li key={`${family.familyName}-${m}`}>• {m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-slate-500">Holdfordeling er ikke klar endnu.</p>
+            )}
+          </section>
+        )}
+
+        {isKursusleder && (
+          <section className="mt-8 rounded-xl bg-white p-6 shadow-lg">
+            <h2 className="mb-4 text-xl font-semibold text-slate-800">Familieløbet – alle hold</h2>
+            <p className="mb-4 text-sm text-slate-600">
+              Træk en hel familie fra et hold til et andet for at flytte den.
+            </p>
+            {familieloebLoading ? (
+              <p className="text-slate-500">Henter hold...</p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {familieloebHolds.map((hold) => (
+                  <div
+                    key={hold.recordId}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={async () => {
+                      if (!movingFamily || movingFamily.fromHold === hold.holdnavn) return;
+                      const res = await fetch("/api/familieloeb", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          action: "moveFamily",
+                          familyName: movingFamily.familyName,
+                          fromHold: movingFamily.fromHold,
+                          toHold: hold.holdnavn,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        setError(data.error || "Kunne ikke flytte familie");
+                      } else {
+                        setFamilieloebHolds(Array.isArray(data.holds) ? data.holds : []);
+                      }
+                      setMovingFamily(null);
+                    }}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <h3 className="mb-3 font-semibold text-slate-800">{hold.holdnavn}</h3>
+                    <div className="space-y-2">
+                      {hold.families.map((family) => (
+                        <div
+                          key={`${hold.holdnavn}-${family.familyName}`}
+                          draggable
+                          onDragStart={() =>
+                            setMovingFamily({ familyName: family.familyName, fromHold: hold.holdnavn })
+                          }
+                          className="cursor-move rounded-lg border border-slate-200 bg-white p-3"
+                        >
+                          <p className="font-medium text-slate-800">{family.familyName}</p>
+                          <ul className="mt-1 space-y-1 text-sm text-slate-600">
+                            {family.members.map((m) => (
+                              <li key={`${family.familyName}-${m}`}>• {m}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
       </div>
     </main>

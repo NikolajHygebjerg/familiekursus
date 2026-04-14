@@ -634,6 +634,18 @@ export interface FamilyRaceInfo {
   membersText: string;
 }
 
+export interface FamilyRaceFamilyGroup {
+  familyName: string;
+  members: string[];
+}
+
+export interface FamilyRaceHoldView {
+  recordId: string;
+  holdnavn: string;
+  membersText: string;
+  families: FamilyRaceFamilyGroup[];
+}
+
 function toAgeBucket(age: number): string {
   if (age <= 5) return "3-5";
   if (age <= 8) return "6-8";
@@ -662,6 +674,34 @@ function holdMembersText(hold: FamilyRaceHold): string {
     .slice()
     .sort((a, b) => a.familie.localeCompare(b.familie))
     .map(familyLine)
+    .join("\n");
+}
+
+function parseFamilyRaceMembersText(membersText: string): FamilyRaceFamilyGroup[] {
+  return membersText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const idx = line.indexOf(":");
+      if (idx === -1) return { familyName: line, members: [] };
+      const familyName = line.slice(0, idx).trim();
+      const membersRaw = line.slice(idx + 1).trim();
+      const members = membersRaw
+        ? membersRaw
+            .split(",")
+            .map((m) => m.trim())
+            .filter(Boolean)
+        : [];
+      return { familyName, members };
+    });
+}
+
+function buildFamilyRaceMembersText(families: FamilyRaceFamilyGroup[]): string {
+  return families
+    .slice()
+    .sort((a, b) => a.familyName.localeCompare(b.familyName))
+    .map((f) => `${f.familyName}: ${f.members.join(", ")}`)
     .join("\n");
 }
 
@@ -856,6 +896,74 @@ export async function getFamilieloebInfoByEmail(email: string): Promise<FamilyRa
     }
   }
   return null;
+}
+
+export async function getAllFamilieloebHolds(): Promise<FamilyRaceHoldView[]> {
+  await syncFamilieloebAssignments();
+  const records = await fetchTableRecords(TABLE_FAMILIELOEB);
+  const result: FamilyRaceHoldView[] = [];
+  for (const rec of records) {
+    const holdnavn = getFieldValue(rec, FAMILIELOEB_HOLD_FIELDS);
+    if (!holdnavn?.trim()) continue;
+    const membersText = getFieldValue(rec, FAMILIELOEB_MEDLEMMER_FIELDS) || "";
+    result.push({
+      recordId: rec.id,
+      holdnavn: holdnavn.trim(),
+      membersText,
+      families: parseFamilyRaceMembersText(membersText),
+    });
+  }
+  return result.sort((a, b) => a.holdnavn.localeCompare(b.holdnavn));
+}
+
+export async function moveFamilyBetweenFamilieloebHolds(
+  familyName: string,
+  fromHold: string,
+  toHold: string
+): Promise<FamilyRaceHoldView[]> {
+  if (!familyName.trim() || !fromHold.trim() || !toHold.trim() || fromHold === toHold) {
+    return getAllFamilieloebHolds();
+  }
+
+  const fieldNames = await getTableFieldNames(TABLE_FAMILIELOEB);
+  const holdField = resolveFieldName(fieldNames, FAMILIELOEB_HOLD_FIELDS);
+  const medlemmerField = resolveFieldName(fieldNames, FAMILIELOEB_MEDLEMMER_FIELDS);
+
+  const records = await fetchTableRecords(TABLE_FAMILIELOEB);
+  const byHold = new Map<string, AirtableRecord>();
+  for (const rec of records) {
+    const hold = getFieldValue(rec, FAMILIELOEB_HOLD_FIELDS);
+    if (hold?.trim()) byHold.set(hold.trim(), rec);
+  }
+
+  const fromRec = byHold.get(fromHold);
+  const toRec = byHold.get(toHold);
+  if (!fromRec || !toRec) {
+    throw new Error("Kunne ikke finde begge hold i Familieløbet.");
+  }
+
+  const fromFamilies = parseFamilyRaceMembersText(getFieldValue(fromRec, FAMILIELOEB_MEDLEMMER_FIELDS) || "");
+  const toFamilies = parseFamilyRaceMembersText(getFieldValue(toRec, FAMILIELOEB_MEDLEMMER_FIELDS) || "");
+
+  const idx = fromFamilies.findIndex((f) => f.familyName.toLowerCase() === familyName.toLowerCase());
+  if (idx === -1) return getAllFamilieloebHolds();
+
+  const [moved] = fromFamilies.splice(idx, 1);
+  if (!toFamilies.some((f) => f.familyName.toLowerCase() === moved.familyName.toLowerCase())) {
+    toFamilies.push(moved);
+  }
+
+  await updateAirtableRecord(TABLE_FAMILIELOEB, fromRec.id, {
+    [holdField]: fromHold,
+    [medlemmerField]: buildFamilyRaceMembersText(fromFamilies),
+  });
+
+  await updateAirtableRecord(TABLE_FAMILIELOEB, toRec.id, {
+    [holdField]: toHold,
+    [medlemmerField]: buildFamilyRaceMembersText(toFamilies),
+  });
+
+  return getAllFamilieloebHolds();
 }
 
 // --- Program-tabel (dagsprogrammer fra Airtable) ---
