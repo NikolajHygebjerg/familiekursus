@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
 
 const TABLE_BRUGERE = "Brugere";
 const BRUGERE_EMAIL_FIELDS = ["Email", "email", "A Email"];
-const BRUGERE_KODE_FIELDS = ["A Kode", "Kode", "kode", "Code", "code"];
+const BRUGERE_KODE_FIELDS = ["Kode", "A Kode", "kode", "Code", "code"];
 
 function getYear(): number {
   return new Date().getFullYear();
