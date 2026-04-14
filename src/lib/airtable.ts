@@ -864,11 +864,14 @@ export async function getMissingWorkshopSelections(): Promise<MissingWorkshopIte
 
   // Byg set af normaliserede navne (fra 2026) der HAR valgt workshops
   const navneMedWorkshops = new Set<string>();
+  const emailsMedWorkshops = new Set<string>();
 
   for (const record of records2026) {
     if (hasAnyWorkshopSelection(record)) {
       const navn = getFieldValue(record, NAVN_FIELDS);
       if (navn) navneMedWorkshops.add(normaliserNavn(navn));
+      const email = getEmailFromRecord(record);
+      if (email?.trim()) emailsMedWorkshops.add(email.trim().toLowerCase());
     }
   }
 
@@ -879,12 +882,17 @@ export async function getMissingWorkshopSelections(): Promise<MissingWorkshopIte
   for (const record of betaltRecords) {
     const navn = getFieldValue(record, NAVN_FIELDS);
     if (!navn) continue;
+    const email = getEmailFromRecord(record)?.trim().toLowerCase() || null;
 
     const normaliseret = normaliserNavn(navn);
     if (seen.has(normaliseret)) continue;
+    if (email && seen.has(email)) continue;
 
-    if (!navneMedWorkshops.has(normaliseret)) {
+    const hasByName = navneMedWorkshops.has(normaliseret);
+    const hasByEmail = email ? emailsMedWorkshops.has(email) : false;
+    if (!hasByName && !hasByEmail) {
       seen.add(normaliseret);
+      if (email) seen.add(email);
       missing.push({ navn });
     }
   }

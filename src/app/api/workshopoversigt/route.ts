@@ -1,7 +1,7 @@
 import {
   getWorkshopoversigtParticipants,
   addToYearTableActivity,
-  getAftengrupperOptions,
+  getAftengrupperOptionsDetailed,
   getNamesFromYearTableForEmail,
   getYearTableFieldNames,
 } from "@/lib/airtable";
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ fields: fieldNames });
     }
     if (options === "aftengrupper") {
-      const opts = await getAftengrupperOptions();
+      const opts = await getAftengrupperOptionsDetailed();
       return NextResponse.json(opts);
     }
     if (names === "1" && email) {
@@ -67,7 +67,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email mangler" }, { status: 400 });
     }
     const opts: { alder?: string; valgtOption?: string; type?: string } = {};
-    if (field === "aftengrupper" && valgtOption) opts.valgtOption = valgtOption.trim();
+    if (field === "aftengrupper" && valgtOption) {
+      const selected = valgtOption.trim();
+      const allOptions = await getAftengrupperOptionsDetailed();
+      const matched = allOptions.find((o) => o.name === selected);
+      if (!matched) {
+        return NextResponse.json({ error: "Ugyldig aftengruppe" }, { status: 400 });
+      }
+      if (matched.soldOut) {
+        return NextResponse.json({ error: `${selected} er udsolgt` }, { status: 409 });
+      }
+      opts.valgtOption = selected;
+    }
     if ((field === "gyserløb" || field === "sheltertur") && alder) opts.alder = alder.trim();
     if (type?.trim()) opts.type = type.trim();
     await addToYearTableActivity(field, navn.trim(), email.trim(), opts);

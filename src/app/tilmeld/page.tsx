@@ -14,7 +14,9 @@ const ACTIVITIES: { key: ActivityKey; label: string }[] = [
 
 export default function TilmeldPage() {
   const { email } = useAuth();
-  const [aftengrupperOptions, setAftengrupperOptions] = useState<string[]>([]);
+  const [aftengrupperOptions, setAftengrupperOptions] = useState<
+    { name: string; max: number | null; current: number; soldOut: boolean }[]
+  >([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [submitting, setSubmitting] = useState<ActivityKey | null>(null);
   const [success, setSuccess] = useState<ActivityKey | null>(null);
@@ -76,6 +78,11 @@ export default function TilmeldPage() {
         setError("Vælg en aftengruppe");
         return;
       }
+      const selectedOption = aftengrupperOptions.find((o) => o.name === aftenValg);
+      if (selectedOption?.soldOut) {
+        setError(`${aftenValg} er udsolgt`);
+        return;
+      }
       if (aftenType === "Barn" && !aftenAlder.trim()) {
         setError("Udfyld alder for barn");
         return;
@@ -106,7 +113,7 @@ export default function TilmeldPage() {
         setSubmitting(null);
       }
     },
-    [aftenNavn, aftenValg, aftenType, aftenAlder, email, resetAftengrupper]
+    [aftenNavn, aftenValg, aftenType, aftenAlder, email, resetAftengrupper, aftengrupperOptions]
   );
 
   const handleGyserløb = useCallback(
@@ -271,8 +278,8 @@ export default function TilmeldPage() {
                 >
                   <option value="">Vælg...</option>
                   {aftengrupperOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
+                    <option key={opt.name} value={opt.name} disabled={opt.soldOut}>
+                      {opt.soldOut ? `${opt.name} (udsolgt)` : opt.name}
                     </option>
                   ))}
                 </select>
