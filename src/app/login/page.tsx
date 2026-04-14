@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
 type Step = "email" | "code" | "create" | "setCode" | "glemtKode";
+const LOGIN_EMAIL_HISTORY_KEY = "familiekursus_login_email_history";
+const MAX_HISTORY = 12;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +16,17 @@ export default function LoginPage() {
   const [step, setStep] = useState<Step>("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailHistory, setEmailHistory] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(LOGIN_EMAIL_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
   const [checkResult, setCheckResult] = useState<{
     existsIn2026: boolean;
     hasBruger: boolean;
@@ -21,6 +34,20 @@ export default function LoginPage() {
     familyName: string | null;
     needsWorkshopRegistration: boolean;
   } | null>(null);
+
+  const rememberEmail = useCallback((value: string) => {
+    const e = value.trim().toLowerCase();
+    if (!e) return;
+    setEmailHistory((prev) => {
+      const next = [e, ...prev.filter((x) => x !== e)].slice(0, MAX_HISTORY);
+      localStorage.setItem(LOGIN_EMAIL_HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const emailSuggestions = emailHistory.filter((h) =>
+    h.toLowerCase().includes(email.trim().toLowerCase())
+  );
 
   const handleEmailSubmit = useCallback(async () => {
     const e = email.trim().toLowerCase();
@@ -64,13 +91,14 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Forkert kode eller email");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration);
+      rememberEmail(e);
       router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fejlede");
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router]);
+  }, [email, code, setAuth, router, rememberEmail]);
 
   const handleCreateUser = useCallback(async () => {
     const e = email.trim().toLowerCase();
@@ -89,13 +117,14 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke oprette bruger");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false);
+      rememberEmail(e);
       router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Oprettelse fejlede");
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router]);
+  }, [email, code, setAuth, router, rememberEmail]);
 
   const handleGlemtKode = useCallback(async () => {
     const e = email.trim().toLowerCase();
@@ -114,13 +143,14 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke nulstille kode");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false);
+      rememberEmail(e);
       router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke nulstille kode");
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router]);
+  }, [email, code, setAuth, router, rememberEmail]);
 
   const handleSetCode = useCallback(async () => {
     const e = email.trim().toLowerCase();
@@ -139,13 +169,14 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke gemme kode");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false);
+      rememberEmail(e);
       router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke gemme kode");
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router]);
+  }, [email, code, setAuth, router, rememberEmail]);
 
   const reset = () => {
     setStep("email");
@@ -166,15 +197,41 @@ export default function LoginPage() {
 
         {step === "email" && (
           <>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleEmailSubmit()}
-              placeholder="Din email"
-              className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-              autoFocus
-            />
+            <div className="relative">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setShowEmailSuggestions(true);
+                }}
+                onFocus={() => setShowEmailSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowEmailSuggestions(false), 150)}
+                onKeyDown={(e) => e.key === "Enter" && handleEmailSubmit()}
+                placeholder="Din email"
+                className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                autoFocus
+                autoComplete="email"
+              />
+              {showEmailSuggestions && emailSuggestions.length > 0 && (
+                <ul className="absolute z-10 mt-[-12px] max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                  {emailSuggestions.map((suggestion) => (
+                    <li key={suggestion}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail(suggestion);
+                          setShowEmailSuggestions(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-slate-800 hover:bg-amber-50"
+                      >
+                        {suggestion}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button
               onClick={handleEmailSubmit}
               disabled={loading || !email.trim()}
