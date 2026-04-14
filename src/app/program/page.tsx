@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
@@ -54,6 +55,7 @@ function ProgramListItem({
   const [expanded, setExpanded] = useState(false);
   const hasWorkshops = item.workshops && item.workshops.length > 0;
   const isExpandable = item.workshopSlot && hasWorkshops;
+  const isAftengrupper = item.workshopSlot === "aftengrupper";
 
   const ArrowIcon = () => (
     <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -72,7 +74,11 @@ function ProgramListItem({
           </span>
         )}
         <div className="min-w-0 flex-1">
-          {isExpandable ? (
+          {isAftengrupper ? (
+            <Link href="/tilmeld" className="font-medium text-amber-700 hover:underline">
+              {displayTitel}
+            </Link>
+          ) : isExpandable ? (
             <button
               type="button"
               onClick={() => setExpanded(!expanded)}
@@ -252,32 +258,11 @@ export default function ProgramPage() {
                 </h2>
                 <ul className="space-y-3">
                   {dag.program.map((item, i) => (
-                    <li key={i} className="flex gap-4">
-                          {item.workshopSlot && item.workshops?.length ? (
-                        <>
-                          {item.tid && (
-                            <span className="min-w-[5.5rem] shrink-0 whitespace-nowrap text-sm font-medium text-slate-500">
-                              {formatTid(item.tid)}
-                            </span>
-                          )}
-                          <ProgramListItem
-                            item={item}
-                            showFamilyWorkshops={false}
-                            compact
-                          />
-                        </>
-                      ) : (
-                        <>
-                          {item.tid && (
-                            <span className="min-w-[5.5rem] shrink-0 whitespace-nowrap text-sm font-medium text-slate-500">
-                              {formatTid(item.tid)}
-                            </span>
-                          )}
-                          <span className="text-slate-800">
-                            {item.tid ? stripTimeFromTitel(item.titel) : item.titel}
-                          </span>
-                        </>
-                      )}
+                    <li key={i}>
+                      <ProgramListItem
+                        item={item}
+                        showFamilyWorkshops={!!familyToLoad}
+                      />
                     </li>
                   ))}
                 </ul>
