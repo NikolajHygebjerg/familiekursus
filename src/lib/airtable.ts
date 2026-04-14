@@ -200,7 +200,7 @@ export async function hasWorkshopRegistration(email: string, year: number): Prom
   return false;
 }
 
-const KODE_FIELDS = ["Kode", "kode", "Code", "code"];
+const KODE_FIELDS = ["A Kode", "Kode", "kode", "Code", "code"];
 
 export async function getBrugerCode(email: string): Promise<string | null> {
   try {
