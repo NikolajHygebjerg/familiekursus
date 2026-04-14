@@ -64,11 +64,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Forkert kode eller email");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration);
-      if (data.needsWorkshopRegistration) {
-        router.replace("/workshop-tilmelding");
-      } else {
-        router.replace("/");
-      }
+      router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fejlede");
     } finally {
@@ -118,11 +114,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke nulstille kode");
       setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false);
-      if (data.needsWorkshopRegistration) {
-        router.replace("/workshop-tilmelding");
-      } else {
-        router.replace("/");
-      }
+      router.replace("/program");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke nulstille kode");
     } finally {

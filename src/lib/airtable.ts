@@ -782,7 +782,7 @@ export async function getProgram(): Promise<DagProgramFromAirtable[]> {
       program.push({
         tid: tid || undefined,
         titel: cleanTitel || titel,
-        workshopSlot: workshops?.length ? slot : undefined,
+        workshopSlot: slot,
         workshops: workshops?.length ? workshops : undefined,
       });
     }
