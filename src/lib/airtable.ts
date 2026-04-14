@@ -505,7 +505,7 @@ export async function addToYearTableActivity(
   const activityFieldName = ACTIVITY_FIELD_OPTIONS[fieldKey][0];
   const alderFieldName = ALDER_FIELD_OPTIONS[0];
   const barnVoksenFieldName = BARN_VOKSEN_FIELDS_LIST[0];
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string | number> = {};
   if (options?.type?.trim()) {
     fields[barnVoksenFieldName] = options.type.trim();
   }
