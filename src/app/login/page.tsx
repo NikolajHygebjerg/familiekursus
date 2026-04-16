@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
@@ -27,7 +27,6 @@ export default function LoginPage() {
     }
   });
   const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
-  const [airtableEmails, setAirtableEmails] = useState<string[]>([]);
   const [checkResult, setCheckResult] = useState<{
     existsIn2026: boolean;
     hasBruger: boolean;
@@ -46,20 +45,11 @@ export default function LoginPage() {
     });
   }, []);
 
-  const emailSuggestions = Array.from(new Set([...emailHistory, ...airtableEmails]))
-    .filter((h) => h.toLowerCase().includes(email.trim().toLowerCase()))
-    .slice(0, 12);
-
-  useEffect(() => {
-    fetch("/api/families/emails")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) =>
-        setAirtableEmails(
-          Array.isArray(data) ? data.filter((x): x is string => typeof x === "string") : []
-        )
-      )
-      .catch(() => setAirtableEmails([]));
-  }, []);
+  const emailSuggestions = Array.from(
+    new Set(
+      emailHistory.filter((h) => h.toLowerCase().includes(email.trim().toLowerCase()))
+    )
+  ).slice(0, 12);
 
   const handleEmailSubmit = useCallback(async () => {
     const e = email.trim().toLowerCase();
