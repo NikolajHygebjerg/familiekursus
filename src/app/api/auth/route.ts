@@ -2,7 +2,6 @@ import {
   getFamilyByEmail,
   getBrugerCode,
   getBrugerRecordId,
-  brugerExistsInBrugere,
   emailExistsIn2026,
   hasWorkshopRegistration,
   createAirtableRecord,
@@ -57,7 +56,8 @@ export async function POST(request: Request) {
     if (action === "check") {
       const existsIn2026 = await emailExistsIn2026(email);
       const brugerCode = await getBrugerCode(email);
-      const brugerExists = await brugerExistsInBrugere(email);
+      const brugerRecordId = await getBrugerRecordId(email);
+      const brugerExists = !!brugerRecordId;
       const familyName = existsIn2026 ? await getFamilyByEmail(email) : null;
       const needsReg = existsIn2026
         ? !(await hasWorkshopRegistration(email, getYear()))

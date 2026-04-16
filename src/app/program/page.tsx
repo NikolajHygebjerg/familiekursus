@@ -59,6 +59,7 @@ function ProgramListItem({
     item.workshopSlot === "aftengrupper" ||
     item.workshopSlot === "sheltertur" ||
     item.workshopSlot === "gyserløb";
+  const showParticipants = !!item.workshopSlot && !!item.beskrivelse && (showFamilyWorkshops || linksToTilmeld);
 
   const ArrowIcon = () => (
     <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -95,7 +96,7 @@ function ProgramListItem({
           ) : (
             <span className="font-medium text-slate-800">{displayTitel}</span>
           )}
-          {showFamilyWorkshops && item.workshopSlot && item.beskrivelse && !linksToTilmeld && (
+          {showParticipants && (
             <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
               {item.beskrivelse}
             </pre>
