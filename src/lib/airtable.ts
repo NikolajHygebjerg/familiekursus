@@ -86,6 +86,8 @@ function getWorkshopValues(record: AirtableRecord, possibleNames: string[]): str
 // Feltnavne for Familie og Navn (Betalt kan bruge andre navne)
 const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
+const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
+const ALDER_FIELD_OPTIONS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
 const FAMILIELOEB_HOLD_FIELDS = ["Holdnavn", "A Holdnavn", "Hold", "A Hold"];
 const FAMILIELOEB_MEDLEMMER_FIELDS = ["Medlemmer", "A Medlemmer"];
 
@@ -106,6 +108,70 @@ export interface WorkshopCount {
   name: string;
   count: number;
   participants?: string[];
+}
+
+export interface WorkshopParticipantDetail {
+  navn: string;
+  alder: string | null;
+  type: string | null;
+}
+
+export interface WorkshopFamilyGroup {
+  email: string;
+  familie: string | null;
+  members: WorkshopParticipantDetail[];
+}
+
+function isBarnType(type: string | null): boolean {
+  return type?.trim().toLowerCase() === "barn";
+}
+
+function formatParticipantAlder(type: string | null, alderRaw: string | null): string | null {
+  if (!isBarnType(type) || !alderRaw?.trim()) return null;
+  const trimmed = alderRaw.trim();
+  return trimmed.endsWith("år") ? trimmed : `${trimmed} år`;
+}
+
+export async function getWorkshopParticipantsGrouped(
+  workshopKey: keyof typeof WORKSHOP_FIELDS,
+  workshopOptionName: string
+): Promise<WorkshopFamilyGroup[]> {
+  const records = await fetchAllRecords();
+  const possibleNames = WORKSHOP_FIELDS[workshopKey];
+  const optionNorm = workshopOptionName.trim().toLowerCase();
+  const byEmail = new Map<string, WorkshopFamilyGroup>();
+
+  for (const record of records) {
+    const workshopNames = getWorkshopValues(record, possibleNames);
+    const matches = workshopNames.some((w) => w.trim().toLowerCase() === optionNorm);
+    if (!matches) continue;
+
+    const email = getEmailFromRecord(record)?.trim().toLowerCase() || "ukendt";
+    const navn = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
+    const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
+    const alder = formatParticipantAlder(type, getFieldValue(record, ALDER_FIELD_OPTIONS));
+    const familie = getFieldValue(record, FAMILIE_FIELDS);
+
+    let group = byEmail.get(email);
+    if (!group) {
+      group = { email, familie, members: [] };
+      byEmail.set(email, group);
+    }
+    if (familie && !group.familie) group.familie = familie;
+
+    group.members.push({ navn, alder, type });
+  }
+
+  return Array.from(byEmail.values())
+    .sort((a, b) => {
+      const labelA = (a.familie || a.email).toLocaleLowerCase("da");
+      const labelB = (b.familie || b.email).toLocaleLowerCase("da");
+      return labelA.localeCompare(labelB, "da");
+    })
+    .map((group) => ({
+      ...group,
+      members: group.members.sort((a, b) => a.navn.localeCompare(b.navn, "da")),
+    }));
 }
 
 export async function getWorkshopCounts(
@@ -355,9 +421,6 @@ const ACTIVITY_FIELD_OPTIONS: Record<string, string[]> = {
 };
 const WORKSHOPOVERSIGT_MAX_FIELDS = ["# Max", "Max", "A Max"];
 
-const BARN_VOKSEN_FIELDS_LIST = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
-const ALDER_FIELD_OPTIONS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
-
 function resolveFieldName(allFieldNames: Set<string>, possibleNames: string[]): string {
   for (const name of possibleNames) {
     if (allFieldNames.has(name)) return name;
@@ -561,7 +624,7 @@ export async function addToYearTableActivity(
   }
   const activityFieldName = ACTIVITY_FIELD_OPTIONS[fieldKey][0];
   const alderFieldName = ALDER_FIELD_OPTIONS[0];
-  const barnVoksenFieldName = BARN_VOKSEN_FIELDS_LIST[0];
+  const barnVoksenFieldName = BARN_VOKSEN_FIELDS[0];
   const fields: Record<string, string | number> = {};
   if (options?.type?.trim()) {
     fields[barnVoksenFieldName] = options.type.trim();
@@ -584,8 +647,6 @@ export async function getWorkshopoversigtParticipants(
 ): Promise<string[]> {
   return getActivityParticipantsFromYearTable(fieldKey);
 }
-
-const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
 
 export interface FamilyMember {
   navn: string;

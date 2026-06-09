@@ -1,10 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFamily } from "@/context/FamilyContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface WorkshopCount {
   name: string;
   count: number;
+}
+
+interface WorkshopParticipantDetail {
+  navn: string;
+  alder: string | null;
+  type: string | null;
+}
+
+interface WorkshopFamilyGroup {
+  email: string;
+  familie: string | null;
+  members: WorkshopParticipantDetail[];
 }
 
 const WORKSHOP_LABELS: Record<string, string> = {
@@ -16,14 +30,23 @@ const WORKSHOP_LABELS: Record<string, string> = {
 };
 
 export default function AntalPage() {
+  const { isKursusleder } = useFamily();
+  const { email } = useAuth();
   const [selectedWorkshop, setSelectedWorkshop] = useState<string>("workshop1");
   const [data, setData] = useState<WorkshopCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [participantFamilies, setParticipantFamilies] = useState<WorkshopFamilyGroup[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [participantError, setParticipantError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setSelectedOption(null);
+    setParticipantFamilies([]);
+    setParticipantError(null);
     fetch(`/api/workshops?workshop=${selectedWorkshop}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText);
@@ -34,6 +57,31 @@ export default function AntalPage() {
       .finally(() => setLoading(false));
   }, [selectedWorkshop]);
 
+  function loadParticipants(optionName: string) {
+    if (!isKursusleder || !email) return;
+    setSelectedOption(optionName);
+    setLoadingParticipants(true);
+    setParticipantError(null);
+    setParticipantFamilies([]);
+
+    fetch(
+      `/api/workshops?workshop=${selectedWorkshop}&option=${encodeURIComponent(optionName)}&email=${encodeURIComponent(email)}`
+    )
+      .then((res) => {
+        if (!res.ok) {
+          return res.json().then((body) => {
+            throw new Error(body.error || res.statusText);
+          });
+        }
+        return res.json();
+      })
+      .then((body: { families: WorkshopFamilyGroup[] }) => {
+        setParticipantFamilies(body.families ?? []);
+      })
+      .catch((err) => setParticipantError(err.message))
+      .finally(() => setLoadingParticipants(false));
+  }
+
   const totalParticipants = data.reduce((sum, w) => sum + w.count, 0);
 
   return (
@@ -42,6 +90,11 @@ export default function AntalPage() {
         <header className="mb-8">
           <h1 className="text-2xl font-bold text-slate-800">Workshopoversigt</h1>
           <p className="mt-1 text-slate-600">Antal tilmeldte pr. workshop-valg.</p>
+          {isKursusleder && (
+            <p className="mt-2 text-sm text-amber-700">
+              Tryk på en workshop for at se deltagere grupperet efter familie.
+            </p>
+          )}
         </header>
 
         <nav className="mb-6 flex flex-wrap gap-2">
@@ -115,21 +168,98 @@ export default function AntalPage() {
               </div>
 
               <ul className="divide-y divide-slate-100">
-                {data.map((workshop) => (
-                  <li
-                    key={workshop.name}
-                    className="flex items-center justify-between py-3 first:pt-0"
-                  >
-                    <span className="font-medium text-slate-800">{workshop.name}</span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
-                      {workshop.count}
-                    </span>
-                  </li>
-                ))}
+                {data.map((workshop) => {
+                  const isSelected = selectedOption === workshop.name;
+                  const RowTag = isKursusleder ? "button" : "div";
+                  return (
+                    <li key={workshop.name}>
+                      <RowTag
+                        type={isKursusleder ? "button" : undefined}
+                        onClick={isKursusleder ? () => loadParticipants(workshop.name) : undefined}
+                        className={`flex w-full items-center justify-between py-3 text-left first:pt-0 ${
+                          isKursusleder
+                            ? `cursor-pointer rounded-lg px-2 transition-colors hover:bg-amber-50 ${
+                                isSelected ? "bg-amber-50 ring-1 ring-amber-200" : ""
+                              }`
+                            : ""
+                        }`}
+                      >
+                        <span className="font-medium text-slate-800">{workshop.name}</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+                          {workshop.count}
+                        </span>
+                      </RowTag>
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}
         </section>
+
+        {isKursusleder && selectedOption && (
+          <section className="mt-6 rounded-xl bg-white p-6 shadow-lg">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800">Deltagere</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {selectedOption} · {WORKSHOP_LABELS[selectedWorkshop]}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedOption(null);
+                  setParticipantFamilies([]);
+                  setParticipantError(null);
+                }}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Luk
+              </button>
+            </div>
+
+            {loadingParticipants && (
+              <p className="text-slate-500">Henter deltagere...</p>
+            )}
+
+            {participantError && (
+              <div className="rounded-lg bg-red-50 p-4 text-red-700">
+                <p className="text-sm">{participantError}</p>
+              </div>
+            )}
+
+            {!loadingParticipants && !participantError && participantFamilies.length === 0 && (
+              <p className="text-slate-500">Ingen deltagere fundet.</p>
+            )}
+
+            {!loadingParticipants && !participantError && participantFamilies.length > 0 && (
+              <div className="space-y-4">
+                {participantFamilies.map((family) => (
+                  <div
+                    key={family.email}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <p className="font-semibold text-slate-800">
+                      {family.familie || family.email}
+                    </p>
+                    {family.familie && (
+                      <p className="text-xs text-slate-500">{family.email}</p>
+                    )}
+                    <ul className="mt-2 space-y-1">
+                      {family.members.map((member) => (
+                        <li key={`${family.email}-${member.navn}`} className="text-sm text-slate-700">
+                          • {member.navn}
+                          {member.alder ? ` (${member.alder})` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </main>
   );

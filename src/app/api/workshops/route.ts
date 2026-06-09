@@ -1,26 +1,47 @@
-import { getWorkshopCounts } from "@/lib/airtable";
+import {
+  getWorkshopCounts,
+  getWorkshopParticipantsGrouped,
+  getBrugerByEmail,
+} from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+
+const VALID_WORKSHOPS = ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const;
+type WorkshopKey = (typeof VALID_WORKSHOPS)[number];
+
+function isValidWorkshop(workshop: string | null): workshop is WorkshopKey {
+  return !!workshop && VALID_WORKSHOPS.includes(workshop as WorkshopKey);
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const workshop = searchParams.get("workshop");
+    const option = searchParams.get("option")?.trim();
+    const adminEmail = searchParams.get("email")?.trim().toLowerCase();
 
-    const validWorkshops = ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"];
-    if (!workshop || !validWorkshops.includes(workshop)) {
+    if (!isValidWorkshop(workshop)) {
       return NextResponse.json(
         { error: "Ugyldig workshop. Brug: workshop1, workshop2, workshop3, workshop4 eller voksen" },
         { status: 400 }
       );
     }
 
-    const withParticipants = searchParams.get("withParticipants") === "true";
-    const counts = await getWorkshopCounts(
-      workshop as "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen",
-      withParticipants
-    );
+    if (option) {
+      if (!adminEmail) {
+        return NextResponse.json({ error: "Email mangler" }, { status: 400 });
+      }
+      const bruger = await getBrugerByEmail(adminEmail);
+      if (!bruger?.isAdmin) {
+        return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
+      }
+
+      const families = await getWorkshopParticipantsGrouped(workshop, option);
+      return NextResponse.json({ option, families });
+    }
+
+    const counts = await getWorkshopCounts(workshop);
     return NextResponse.json(counts);
   } catch (error) {
     console.error("Workshop API fejl:", error);
