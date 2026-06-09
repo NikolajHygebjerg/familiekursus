@@ -10,8 +10,6 @@ import {
 } from "react";
 
 const STORAGE_KEY = "familiekursus_auth";
-const ADMIN_EMAIL = "nh@brandbjerg.dk";
-const ADMIN_CODE = "Design86930881";
 const DEFAULT_CODE = "1234";
 
 export const KURSUSLEDER = "Kursusleder";
@@ -24,7 +22,12 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  setAuth: (email: string, familyName: string | null, needsWorkshopRegistration: boolean) => void;
+  setAuth: (
+    email: string,
+    familyName: string | null,
+    needsWorkshopRegistration: boolean,
+    isAdmin?: boolean
+  ) => void;
   logout: () => void;
   isKursusleder: boolean;
 }
@@ -59,16 +62,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setAuth = useCallback(
-    (email: string, familyName: string | null, needsWorkshopRegistration: boolean) => {
-      const isAdmin = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-      const state: AuthState = {
-        email,
-        familyName: isAdmin ? KURSUSLEDER : familyName,
-        isAdmin,
-        needsWorkshopRegistration,
-      };
-      setAuthState(state);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    (
+      email: string,
+      familyName: string | null,
+      needsWorkshopRegistration: boolean,
+      isAdmin?: boolean
+    ) => {
+      setAuthState((prev) => {
+        const admin = isAdmin ?? prev.isAdmin;
+        const state: AuthState = {
+          email,
+          familyName: admin ? KURSUSLEDER : familyName,
+          isAdmin: admin,
+          needsWorkshopRegistration: admin ? false : needsWorkshopRegistration,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        return state;
+      });
     },
     []
   );
@@ -105,4 +115,4 @@ export function useAuth() {
   return ctx;
 }
 
-export { ADMIN_EMAIL, ADMIN_CODE, DEFAULT_CODE };
+export { DEFAULT_CODE };

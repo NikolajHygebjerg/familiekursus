@@ -204,21 +204,41 @@ export async function hasWorkshopRegistration(email: string, year: number): Prom
 }
 
 const KODE_FIELDS = ["A Kode", "Kode", "kode", "Code", "code"];
+const BRUGERSTATUS_FIELDS = ["Brugerstatus", "A Brugerstatus", "brugerstatus"];
 
-export async function getBrugerCode(email: string): Promise<string | null> {
+export interface BrugerInfo {
+  recordId: string;
+  code: string | null;
+  isAdmin: boolean;
+}
+
+function isAdminBrugerstatus(raw: string | null): boolean {
+  return raw?.trim().toLowerCase() === "admin";
+}
+
+export async function getBrugerByEmail(email: string): Promise<BrugerInfo | null> {
   try {
     const records = await fetchTableRecords(TABLE_BRUGERE);
+    let fallback: BrugerInfo | null = null;
     for (const record of records) {
       const recEmail = getEmailFromRecord(record);
-      if (recEmail?.toLowerCase() === email.toLowerCase()) {
-        const c = getFieldValue(record, KODE_FIELDS);
-        if (c?.trim()) return c;
-      }
+      if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
+      const code = getFieldValue(record, KODE_FIELDS)?.trim() || null;
+      const isAdmin = isAdminBrugerstatus(getFieldValue(record, BRUGERSTATUS_FIELDS));
+      const info: BrugerInfo = { recordId: record.id, code, isAdmin };
+      if (code) return info;
+      fallback = info;
     }
+    return fallback;
   } catch {
     // Brugere table might not exist
   }
   return null;
+}
+
+export async function getBrugerCode(email: string): Promise<string | null> {
+  const bruger = await getBrugerByEmail(email);
+  return bruger?.code ?? null;
 }
 
 export async function brugerExistsInBrugere(email: string): Promise<boolean> {
@@ -285,22 +305,8 @@ export async function updateAirtableRecord(
 }
 
 export async function getBrugerRecordId(email: string): Promise<string | null> {
-  try {
-    const records = await fetchTableRecords(TABLE_BRUGERE);
-    let recordId: string | null = null;
-    for (const record of records) {
-      const recEmail = getEmailFromRecord(record);
-      if (recEmail?.toLowerCase() === email.toLowerCase()) {
-        const c = getFieldValue(record, KODE_FIELDS);
-        if (c?.trim()) return record.id;
-        recordId = record.id;
-      }
-    }
-    return recordId;
-  } catch {
-    // Brugere table might not exist
-  }
-  return null;
+  const bruger = await getBrugerByEmail(email);
+  return bruger?.recordId ?? null;
 }
 
 // Workshopoversigt: hver workshop har sin egen kolonne med række 1-6
@@ -656,10 +662,6 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
   return members;
 }
 
-export interface MissingWorkshopItem {
-  navn: string;
-}
-
 interface FamilyRaceMember {
   navn: string;
   alder: number | null;
@@ -822,82 +824,6 @@ function buildFamilyRaceHolds(families: FamilyRaceFamily[]): FamilyRaceHold[] {
   }
 
   return holds;
-}
-
-// Normaliser navn så "Lars Alexandersen" og "Alexandersen Lars" matcher (omvendt navnestilling)
-function normaliserNavn(navn: string): string {
-  const cleaned = navn
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ");
-  const parts = cleaned.trim().split(/\s+/).filter(Boolean);
-  return parts.sort().join(" ");
-}
-
-function hasAnyWorkshopSelection(record: AirtableRecord): boolean {
-  const explicit =
-    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1) ||
-    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2) ||
-    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3) ||
-    getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4) ||
-    getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
-  if (explicit) return true;
-
-  // Fallback: accepter ukendte kolonnenavne der stadig ligner workshopfelter.
-  for (const [key, raw] of Object.entries(record.fields)) {
-    const keyNorm = key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const looksLikeWorkshop =
-      keyNorm.includes("workshop") || keyNorm.includes("foraeldreworkshop");
-    if (!looksLikeWorkshop) continue;
-    if (typeof raw === "string" && raw.trim()) return true;
-    if (Array.isArray(raw) && raw.some((v) => String(v).trim())) return true;
-  }
-  return false;
-}
-
-export async function getMissingWorkshopSelections(): Promise<MissingWorkshopItem[]> {
-  const [betaltRecords, records2026] = await Promise.all([
-    fetchTableRecords(TABLE_BETALT),
-    fetchTableRecords(TABLE_2026),
-  ]);
-
-  // Byg set af normaliserede navne (fra 2026) der HAR valgt workshops
-  const navneMedWorkshops = new Set<string>();
-  const emailsMedWorkshops = new Set<string>();
-
-  for (const record of records2026) {
-    if (hasAnyWorkshopSelection(record)) {
-      const navn = getFieldValue(record, NAVN_FIELDS);
-      if (navn) navneMedWorkshops.add(normaliserNavn(navn));
-      const email = getEmailFromRecord(record);
-      if (email?.trim()) emailsMedWorkshops.add(email.trim().toLowerCase());
-    }
-  }
-
-  // Find Betalt-records der IKKE har valgt workshops i 2026 (sammenlign via Navn, normaliseret)
-  const missing: MissingWorkshopItem[] = [];
-  const seen = new Set<string>();
-
-  for (const record of betaltRecords) {
-    const navn = getFieldValue(record, NAVN_FIELDS);
-    if (!navn) continue;
-    const email = getEmailFromRecord(record)?.trim().toLowerCase() || null;
-
-    const normaliseret = normaliserNavn(navn);
-    if (seen.has(normaliseret)) continue;
-    if (email && seen.has(email)) continue;
-
-    const hasByName = navneMedWorkshops.has(normaliseret);
-    const hasByEmail = email ? emailsMedWorkshops.has(email) : false;
-    if (!hasByName && !hasByEmail) {
-      seen.add(normaliseret);
-      if (email) seen.add(email);
-      missing.push({ navn });
-    }
-  }
-
-  return missing.sort((a, b) => a.navn.localeCompare(b.navn));
 }
 
 async function getFamilyRaceFamiliesFrom2026(): Promise<FamilyRaceFamily[]> {
