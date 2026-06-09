@@ -165,19 +165,63 @@ export async function getWorkshopBackendInfo(
   return null;
 }
 
+function getStaffFieldRaw(record: AirtableRecord, possibleNames: string[]): unknown {
+  for (const name of possibleNames) {
+    if (!(name in record.fields)) continue;
+    const value = record.fields[name];
+    if (value == null || value === "") continue;
+    return value;
+  }
+  return null;
+}
+
+function staffNamesFromFieldValue(value: unknown): string[] {
+  if (value == null || value === "") return [];
+  if (typeof value === "string") return parseStaffNames(value);
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (typeof item === "string") return parseStaffNames(item);
+      return [String(item).trim()].filter(Boolean);
+    });
+  }
+  if (typeof value === "number") return [String(value)];
+  return parseStaffNames(String(value));
+}
+
+function staffFieldDisplayValue(value: unknown): string | null {
+  const names = staffNamesFromFieldValue(value);
+  return names.length > 0 ? names.join(", ") : null;
+}
+
+function staffNamesIncludeAlle(names: string[]): boolean {
+  return names.some((name) => normalizePersonName(name) === "alle");
+}
+
+function adminMatchesStaffNames(adminNavn: string, names: string[]): boolean {
+  return names.some((name) => personNameMatchesStaff(adminNavn, name));
+}
+
 function readWorkshopBackendRecord(record: AirtableRecord): {
   workshopName: string;
   info: WorkshopBackendInfo;
+  underviserNames: string[];
+  hjaelpereNames: string[];
 } | null {
   const workshopName = getFieldValue(record, WORKSHOPBACKEND_NAME_FIELDS);
   if (!workshopName) return null;
+  const underviserRaw = getStaffFieldRaw(record, WORKSHOPBACKEND_UNDERVISER_FIELDS);
+  const hjaelpereRaw = getStaffFieldRaw(record, WORKSHOPBACKEND_HJAELPERE_FIELDS);
+  const underviserNames = staffNamesFromFieldValue(underviserRaw);
+  const hjaelpereNames = staffNamesFromFieldValue(hjaelpereRaw);
   return {
     workshopName,
     info: {
-      underviser: getFieldValue(record, WORKSHOPBACKEND_UNDERVISER_FIELDS),
-      hjaelpere: getFieldValue(record, WORKSHOPBACKEND_HJAELPERE_FIELDS),
+      underviser: staffFieldDisplayValue(underviserRaw),
+      hjaelpere: staffFieldDisplayValue(hjaelpereRaw),
       lokale: getFieldValue(record, WORKSHOPBACKEND_LOKALE_FIELDS),
     },
+    underviserNames,
+    hjaelpereNames,
   };
 }
 
@@ -197,12 +241,6 @@ function parseStaffNames(raw: string | null): string[] {
     .filter(Boolean);
 }
 
-function staffFieldIncludesAlle(raw: string | null): boolean {
-  if (!raw?.trim()) return false;
-  if (normalizePersonName(raw.trim()) === "alle") return true;
-  return parseStaffNames(raw).some((name) => normalizePersonName(name) === "alle");
-}
-
 function personNameMatchesStaff(adminNavn: string, staffName: string): boolean {
   const adminNorm = normalizePersonName(adminNavn);
   const staffNorm = normalizePersonName(staffName);
@@ -216,30 +254,56 @@ function personNameMatchesStaff(adminNavn: string, staffName: string): boolean {
   );
 }
 
-function adminMatchesStaffField(adminNavn: string, raw: string | null): boolean {
-  return parseStaffNames(raw).some((name) => personNameMatchesStaff(adminNavn, name));
+function isAdminAssignedToParsed(
+  parsed: {
+    underviserNames: string[];
+    hjaelpereNames: string[];
+  },
+  adminNavn: string
+): boolean {
+  if (
+    staffNamesIncludeAlle(parsed.underviserNames) ||
+    staffNamesIncludeAlle(parsed.hjaelpereNames)
+  ) {
+    return true;
+  }
+  return (
+    adminMatchesStaffNames(adminNavn, parsed.underviserNames) ||
+    adminMatchesStaffNames(adminNavn, parsed.hjaelpereNames)
+  );
+}
+
+function getAdminWorkshopRolesFromParsed(
+  parsed: {
+    info: WorkshopBackendInfo;
+    underviserNames: string[];
+    hjaelpereNames: string[];
+  },
+  adminNavn: string
+): ("underviser" | "hjaelper" | "alle")[] {
+  if (
+    staffNamesIncludeAlle(parsed.underviserNames) ||
+    staffNamesIncludeAlle(parsed.hjaelpereNames)
+  ) {
+    return ["alle"];
+  }
+  const roles: ("underviser" | "hjaelper")[] = [];
+  if (adminMatchesStaffNames(adminNavn, parsed.underviserNames)) roles.push("underviser");
+  if (adminMatchesStaffNames(adminNavn, parsed.hjaelpereNames)) roles.push("hjaelper");
+  return roles;
 }
 
 export function getAdminWorkshopRoles(
   backend: WorkshopBackendInfo,
   adminNavn: string
 ): ("underviser" | "hjaelper" | "alle")[] {
-  if (staffFieldIncludesAlle(backend.underviser) || staffFieldIncludesAlle(backend.hjaelpere)) {
-    return ["alle"];
-  }
-  const roles: ("underviser" | "hjaelper")[] = [];
-  if (adminMatchesStaffField(adminNavn, backend.underviser)) roles.push("underviser");
-  if (adminMatchesStaffField(adminNavn, backend.hjaelpere)) roles.push("hjaelper");
-  return roles;
-}
-
-function isAdminAssignedToBackend(backend: WorkshopBackendInfo, adminNavn: string): boolean {
-  if (staffFieldIncludesAlle(backend.underviser) || staffFieldIncludesAlle(backend.hjaelpere)) {
-    return true;
-  }
-  return (
-    adminMatchesStaffField(adminNavn, backend.underviser) ||
-    adminMatchesStaffField(adminNavn, backend.hjaelpere)
+  return getAdminWorkshopRolesFromParsed(
+    {
+      info: backend,
+      underviserNames: parseStaffNames(backend.underviser),
+      hjaelpereNames: parseStaffNames(backend.hjaelpere),
+    },
+    adminNavn
   );
 }
 
@@ -249,7 +313,7 @@ export async function getAssignedWorkshopOptionKeys(adminNavn: string): Promise<
     const records = await fetchTableRecords(TABLE_WORKSHOPBACKEND);
     for (const record of records) {
       const parsed = readWorkshopBackendRecord(record);
-      if (!parsed || !isAdminAssignedToBackend(parsed.info, adminNavn)) continue;
+      if (!parsed || !isAdminAssignedToParsed(parsed, adminNavn)) continue;
       assigned.add(normalizeWorkshopName(parsed.workshopName));
     }
   } catch {
@@ -293,40 +357,54 @@ export interface AdminAssignedWorkshopItem {
 export async function getAdminAssignedWorkshops(
   adminNavn: string
 ): Promise<AdminAssignedWorkshopItem[]> {
-  const assigned = await getAssignedWorkshopOptionKeys(adminNavn);
-  const backendByName = new Map<string, WorkshopBackendInfo>();
+  const countByNorm = new Map<string, { slot: WorkshopSlotKey; name: string; count: number }>();
+  for (const slot of WORKSHOP_SLOT_KEYS) {
+    const counts = await getWorkshopCounts(slot);
+    for (const item of counts) {
+      countByNorm.set(normalizeWorkshopName(item.name), {
+        slot,
+        name: item.name,
+        count: item.count,
+      });
+    }
+  }
+
+  const slotByNorm = new Map<string, WorkshopSlotKey>();
+  try {
+    const options = await getWorkshopOptions(new Date().getFullYear());
+    for (const slot of WORKSHOP_SLOT_KEYS) {
+      for (const name of options[slot] || []) {
+        slotByNorm.set(normalizeWorkshopName(name), slot);
+      }
+    }
+  } catch {
+    // Workshopoversigt kan mangle
+  }
+
+  const results: AdminAssignedWorkshopItem[] = [];
 
   try {
     const records = await fetchTableRecords(TABLE_WORKSHOPBACKEND);
     for (const record of records) {
       const parsed = readWorkshopBackendRecord(record);
-      if (parsed) backendByName.set(normalizeWorkshopName(parsed.workshopName), parsed.info);
+      if (!parsed || !isAdminAssignedToParsed(parsed, adminNavn)) continue;
+
+      const norm = normalizeWorkshopName(parsed.workshopName);
+      const registration = countByNorm.get(norm);
+      const slot = registration?.slot ?? slotByNorm.get(norm) ?? "workshop1";
+
+      results.push({
+        slot,
+        workshopName: registration?.name ?? parsed.workshopName,
+        count: registration?.count ?? 0,
+        roles: getAdminWorkshopRolesFromParsed(parsed, adminNavn),
+        underviser: parsed.info.underviser,
+        hjaelpere: parsed.info.hjaelpere,
+        lokale: parsed.info.lokale,
+      });
     }
   } catch {
     // Workshopbackend table might not exist yet
-  }
-
-  const results: AdminAssignedWorkshopItem[] = [];
-
-  for (const slot of WORKSHOP_SLOT_KEYS) {
-    const counts = await getWorkshopCounts(slot);
-    for (const item of counts) {
-      if (!assigned.has(normalizeWorkshopName(item.name))) continue;
-      const backend = backendByName.get(normalizeWorkshopName(item.name)) ?? {
-        underviser: null,
-        hjaelpere: null,
-        lokale: null,
-      };
-      results.push({
-        slot,
-        workshopName: item.name,
-        count: item.count,
-        roles: getAdminWorkshopRoles(backend, adminNavn),
-        underviser: backend.underviser,
-        hjaelpere: backend.hjaelpere,
-        lokale: backend.lokale,
-      });
-    }
   }
 
   return results.sort((a, b) => {
