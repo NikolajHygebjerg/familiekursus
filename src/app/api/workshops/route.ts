@@ -3,6 +3,7 @@ import {
   getWorkshopParticipantsGrouped,
   getWorkshopBackendInfo,
   getBrugerByEmail,
+  getAdminWorkshopRoles,
 } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
@@ -42,7 +43,9 @@ export async function GET(request: Request) {
         getWorkshopParticipantsGrouped(workshop, option),
         getWorkshopBackendInfo(option),
       ]);
-      return NextResponse.json({ option, families, backend });
+      const roles =
+        backend && bruger.adminNavn ? getAdminWorkshopRoles(backend, bruger.adminNavn) : [];
+      return NextResponse.json({ option, families, backend, roles });
     }
 
     const counts = await getWorkshopCounts(workshop);

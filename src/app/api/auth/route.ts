@@ -19,7 +19,7 @@ function getYear(): number {
 
 export const dynamic = "force-dynamic";
 
-async function buildAuthResponse(email: string, isAdmin: boolean) {
+async function buildAuthResponse(email: string, isAdmin: boolean, adminNavn: string | null = null) {
   const existsIn2026 = await emailExistsIn2026(email);
   const familyName = isAdmin ? null : existsIn2026 ? await getFamilyByEmail(email) : null;
   const needsReg = isAdmin
@@ -33,6 +33,7 @@ async function buildAuthResponse(email: string, isAdmin: boolean) {
     email,
     familyName: isAdmin ? "Kursusleder" : familyName,
     isAdmin,
+    adminNavn: isAdmin ? adminNavn : null,
     needsWorkshopRegistration: needsReg,
   };
 }
@@ -130,7 +131,7 @@ export async function POST(request: Request) {
       await updateAirtableRecord(TABLE_BRUGERE, bruger.recordId, {
         [BRUGERE_KODE_FIELDS[0]]: code,
       });
-      return NextResponse.json(await buildAuthResponse(email, bruger.isAdmin));
+      return NextResponse.json(await buildAuthResponse(email, bruger.isAdmin, bruger.adminNavn));
     }
 
     if (action === "setCode") {
@@ -153,7 +154,9 @@ export async function POST(request: Request) {
         });
       }
       const updated = await getBrugerByEmail(email);
-      return NextResponse.json(await buildAuthResponse(email, updated?.isAdmin ?? false));
+      return NextResponse.json(
+        await buildAuthResponse(email, updated?.isAdmin ?? false, updated?.adminNavn ?? null)
+      );
     }
 
     if (action === "login") {
@@ -170,7 +173,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Forkert kode" }, { status: 401 });
       }
 
-      return NextResponse.json(await buildAuthResponse(email, bruger.isAdmin));
+      return NextResponse.json(
+        await buildAuthResponse(email, bruger.isAdmin, bruger.adminNavn)
+      );
     }
 
     return NextResponse.json({ error: "Ukendt handling" }, { status: 400 });

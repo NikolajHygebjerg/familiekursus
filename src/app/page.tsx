@@ -45,6 +45,7 @@ export default function AntalPage() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [participantFamilies, setParticipantFamilies] = useState<WorkshopFamilyGroup[]>([]);
   const [workshopBackend, setWorkshopBackend] = useState<WorkshopBackendInfo | null>(null);
+  const [myRoles, setMyRoles] = useState<("underviser" | "hjaelper" | "alle")[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantError, setParticipantError] = useState<string | null>(null);
 
@@ -54,7 +55,9 @@ export default function AntalPage() {
     setSelectedOption(null);
     setParticipantFamilies([]);
     setWorkshopBackend(null);
+    setMyRoles([]);
     setParticipantError(null);
+
     fetch(`/api/workshops?workshop=${selectedWorkshop}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText);
@@ -72,6 +75,7 @@ export default function AntalPage() {
     setParticipantError(null);
     setParticipantFamilies([]);
     setWorkshopBackend(null);
+    setMyRoles([]);
 
     fetch(
       `/api/workshops?workshop=${selectedWorkshop}&option=${encodeURIComponent(optionName)}&email=${encodeURIComponent(email)}`
@@ -84,10 +88,17 @@ export default function AntalPage() {
         }
         return res.json();
       })
-      .then((body: { families: WorkshopFamilyGroup[]; backend: WorkshopBackendInfo | null }) => {
+      .then(
+        (body: {
+          families: WorkshopFamilyGroup[];
+          backend: WorkshopBackendInfo | null;
+          roles?: ("underviser" | "hjaelper" | "alle")[];
+        }) => {
         setParticipantFamilies(body.families ?? []);
         setWorkshopBackend(body.backend ?? null);
-      })
+        setMyRoles(body.roles ?? []);
+      }
+      )
       .catch((err) => setParticipantError(err.message))
       .finally(() => setLoadingParticipants(false));
   }
@@ -222,6 +233,7 @@ export default function AntalPage() {
                   setSelectedOption(null);
                   setParticipantFamilies([]);
                   setWorkshopBackend(null);
+                  setMyRoles([]);
                   setParticipantError(null);
                 }}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
@@ -229,6 +241,17 @@ export default function AntalPage() {
                 Luk
               </button>
             </div>
+
+            {!loadingParticipants && !participantError && myRoles.length > 0 && (
+              <p className="mb-4 text-sm font-medium text-amber-700">
+                Din rolle:{" "}
+                {myRoles.includes("alle")
+                  ? "Alle (fælles workshop)"
+                  : myRoles
+                      .map((role) => (role === "underviser" ? "Underviser" : "Hjælper"))
+                      .join(" · ")}
+              </p>
+            )}
 
             {!loadingParticipants && !participantError && (
               <dl className="mb-6 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">

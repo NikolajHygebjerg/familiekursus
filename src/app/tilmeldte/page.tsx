@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
 
@@ -13,16 +13,14 @@ interface FamilyMember {
   voksen: string | null;
 }
 
-interface FamilieloebFamily {
-  familyName: string;
-  members: string[];
-}
-
-interface FamilieloebHold {
-  recordId: string;
-  holdnavn: string;
-  membersText: string;
-  families: FamilieloebFamily[];
+interface AdminAssignedWorkshop {
+  slot: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen";
+  workshopName: string;
+  count: number;
+  roles: ("underviser" | "hjaelper" | "alle")[];
+  underviser: string | null;
+  hjaelpere: string | null;
+  lokale: string | null;
 }
 
 const WORKSHOP_LABELS: Record<string, string> = {
@@ -35,57 +33,36 @@ const WORKSHOP_LABELS: Record<string, string> = {
 
 export default function TilmeldtePage() {
   const { selectedFamily, isKursusleder } = useFamily();
-  const { email } = useAuth();
-  const [families, setFamilies] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const [pickedFamily, setPickedFamily] = useState<string | null>(null);
+  const { email, adminNavn } = useAuth();
   const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [loadingFamilies, setLoadingFamilies] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string; membersText: string; message: string } | null>(null);
   const [familieloebLoading, setFamilieloebLoading] = useState(false);
-  const [familieloebHolds, setFamilieloebHolds] = useState<FamilieloebHold[]>([]);
-  const [movingFamily, setMovingFamily] = useState<{ familyName: string; fromHold: string } | null>(null);
+  const [myWorkshops, setMyWorkshops] = useState<AdminAssignedWorkshop[]>([]);
+  const [myWorkshopsLoading, setMyWorkshopsLoading] = useState(false);
 
-  const displayFamily = isKursusleder ? pickedFamily : selectedFamily;
+  const displayFamily = selectedFamily;
 
   useEffect(() => {
     if (isKursusleder) {
-      setLoadingFamilies(true);
-      fetch("/api/families/emails")
-        .then((res) => (res.ok ? res.json() : []))
-        .then((data: string[]) => setFamilies(data))
-        .catch(() => setFamilies([]))
-        .finally(() => setLoadingFamilies(false));
+      if (!email) return;
+      setMyWorkshopsLoading(true);
+      setError(null);
+      fetch(`/api/my-workshops?email=${encodeURIComponent(email)}`)
+        .then((res) => {
+          if (!res.ok) {
+            return res.json().then((body) => {
+              throw new Error(body.error || res.statusText);
+            });
+          }
+          return res.json();
+        })
+        .then((data) => setMyWorkshops(Array.isArray(data?.workshops) ? data.workshops : []))
+        .catch((err) => setError(err.message))
+        .finally(() => setMyWorkshopsLoading(false));
     }
-  }, [isKursusleder]);
-
-  const suggestions = useMemo(() => {
-    if (!search.trim()) return families.slice(0, 10);
-    const lower = search.toLowerCase();
-    return families.filter((f) => f.toLowerCase().includes(lower)).slice(0, 10);
-  }, [families, search]);
-
-  const loadFamily = useCallback((emailOrName: string) => {
-    setPickedFamily(emailOrName);
-    setSearch(emailOrName);
-    setShowSuggestions(false);
-    setLoadingMembers(true);
-    setError(null);
-    const url = emailOrName.includes("@")
-      ? `/api/families/email?email=${encodeURIComponent(emailOrName)}`
-      : `/api/families/${encodeURIComponent(emailOrName)}`;
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.statusText);
-        return res.json();
-      })
-      .then(setMembers)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoadingMembers(false));
-  }, []);
+  }, [isKursusleder, email]);
 
   useEffect(() => {
     if (!isKursusleder && selectedFamily && selectedFamily.includes("@")) {
@@ -102,16 +79,6 @@ export default function TilmeldtePage() {
         .finally(() => setLoadingMembers(false));
     }
   }, [isKursusleder, selectedFamily, email]);
-
-  useEffect(() => {
-    if (!isKursusleder) return;
-    setFamilieloebLoading(true);
-    fetch("/api/familieloeb?all=1")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setFamilieloebHolds(Array.isArray(data?.holds) ? data.holds : []))
-      .catch(() => setFamilieloebHolds([]))
-      .finally(() => setFamilieloebLoading(false));
-  }, [isKursusleder]);
 
   useEffect(() => {
     if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
@@ -175,6 +142,21 @@ export default function TilmeldtePage() {
     return result.sort((a, b) => a.slot.localeCompare(b.slot) || a.workshopName.localeCompare(b.workshopName));
   }, [members]);
 
+  const myWorkshopsBySlot = useMemo(() => {
+    const grouped = new Map<string, AdminAssignedWorkshop[]>();
+    for (const item of myWorkshops) {
+      const list = grouped.get(item.slot) || [];
+      list.push(item);
+      grouped.set(item.slot, list);
+    }
+    return grouped;
+  }, [myWorkshops]);
+
+  function formatRoleLabel(roles: AdminAssignedWorkshop["roles"]): string {
+    if (roles.includes("alle")) return "Alle (fælles workshop)";
+    return roles.map((role) => (role === "underviser" ? "Underviser" : "Hjælper")).join(" · ");
+  }
+
   return (
     <main className="min-h-screen p-6 md:p-10">
       <div className="mx-auto max-w-6xl">
@@ -182,53 +164,93 @@ export default function TilmeldtePage() {
           <h1 className="text-2xl font-bold text-slate-800">Dine workshops</h1>
           <p className="mt-1 text-slate-600">
             {isKursusleder
-              ? "Søg efter email for at se workshop-tilmeldinger."
+              ? adminNavn
+                ? `Workshops hvor ${adminNavn} er underviser eller hjælper.`
+                : "Tilføj dit navn under «Navne» i Brugere-tabellen for at se dine workshops."
               : `Workshop-tilmeldinger for ${displayFamily || "din familie"}.`}
           </p>
         </header>
 
-        {isKursusleder && (
-          <div className="relative mb-8">
-            <label htmlFor="family-search" className="mb-2 block text-sm font-medium text-slate-700">
-              Søg efter email
-            </label>
-            <input
-              id="family-search"
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setShowSuggestions(true);
-                setPickedFamily(null);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              placeholder="Søg efter email..."
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-            />
-            {showSuggestions && suggestions.length > 0 && (
-              <ul className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                {suggestions.map((fam) => (
-                  <li key={fam}>
-                    <button
-                      type="button"
-                      onClick={() => loadFamily(fam)}
-                      className="w-full px-4 py-2 text-left text-slate-800 hover:bg-amber-50"
-                    >
-                      {fam}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {showSuggestions && search.trim() && suggestions.length === 0 && !loadingFamilies && (
-              <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-500 shadow-lg">
-                Ingen emails matcher &quot;{search}&quot;
+        {isKursusleder ? (
+          <>
+            {error && (
+              <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-700">
+                <p className="font-medium">Fejl</p>
+                <p className="mt-1 text-sm">{error}</p>
               </div>
             )}
-          </div>
-        )}
 
+            {myWorkshopsLoading && (
+              <p className="text-slate-500">Henter dine workshops...</p>
+            )}
+
+            {!myWorkshopsLoading && !adminNavn && (
+              <p className="text-slate-500">
+                Der er ikke sat et navn på din bruger endnu. Brug Workshopoversigt for at se alle
+                workshops.
+              </p>
+            )}
+
+            {!myWorkshopsLoading && adminNavn && myWorkshops.length === 0 && !error && (
+              <p className="text-slate-500">
+                Ingen workshops fundet hvor du er med. Tjek at dit navn i Brugere matcher
+                Underviser/Hjælpere i Workshopbackend.
+              </p>
+            )}
+
+            {!myWorkshopsLoading && myWorkshops.length > 0 && (
+              <div className="space-y-6">
+                {(["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const).map(
+                  (slot) => {
+                    const items = myWorkshopsBySlot.get(slot);
+                    if (!items?.length) return null;
+                    return (
+                      <section key={slot} className="rounded-xl bg-white p-6 shadow-lg">
+                        <h2 className="mb-4 text-xl font-semibold text-slate-800">
+                          {WORKSHOP_LABELS[slot]}
+                        </h2>
+                        <div className="space-y-4">
+                          {items.map((item) => (
+                            <div
+                              key={`${slot}-${item.workshopName}`}
+                              className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
+                            >
+                              <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                                <h3 className="font-semibold text-slate-800">{item.workshopName}</h3>
+                                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+                                  {formatRoleLabel(item.roles)}
+                                </span>
+                              </div>
+                              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                                <div>
+                                  <dt className="text-slate-500">Underviser</dt>
+                                  <dd className="text-slate-800">{item.underviser || "—"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-slate-500">Hjælpere</dt>
+                                  <dd className="text-slate-800">{item.hjaelpere || "—"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-slate-500">Lokale</dt>
+                                  <dd className="text-slate-800">{item.lokale || "—"}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-slate-500">Tilmeldte</dt>
+                                  <dd className="text-slate-800">{item.count}</dd>
+                                </div>
+                              </dl>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-700">
             <p className="font-medium">Fejl</p>
@@ -326,10 +348,6 @@ export default function TilmeldtePage() {
           </div>
         )}
 
-        {!loadingMembers && isKursusleder && !pickedFamily && (
-          <p className="text-slate-500">Søg efter en email ovenfor for at se tilmeldinger.</p>
-        )}
-
         {!loadingMembers && !isKursusleder && selectedFamily && members.length === 0 && !error && (
           <p className="text-slate-500">Ingen familiemedlemmer fundet.</p>
         )}
@@ -360,68 +378,7 @@ export default function TilmeldtePage() {
             )}
           </section>
         )}
-
-        {isKursusleder && (
-          <section className="mt-8 rounded-xl bg-white p-6 shadow-lg">
-            <h2 className="mb-4 text-xl font-semibold text-slate-800">Familieløbet – alle hold</h2>
-            <p className="mb-4 text-sm text-slate-600">
-              Træk en hel familie fra et hold til et andet for at flytte den.
-            </p>
-            {familieloebLoading ? (
-              <p className="text-slate-500">Henter hold...</p>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {familieloebHolds.map((hold) => (
-                  <div
-                    key={hold.recordId}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={async () => {
-                      if (!movingFamily || movingFamily.fromHold === hold.holdnavn) return;
-                      const res = await fetch("/api/familieloeb", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          action: "moveFamily",
-                          familyName: movingFamily.familyName,
-                          fromHold: movingFamily.fromHold,
-                          toHold: hold.holdnavn,
-                        }),
-                      });
-                      const data = await res.json();
-                      if (!res.ok) {
-                        setError(data.error || "Kunne ikke flytte familie");
-                      } else {
-                        setFamilieloebHolds(Array.isArray(data.holds) ? data.holds : []);
-                      }
-                      setMovingFamily(null);
-                    }}
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-4"
-                  >
-                    <h3 className="mb-3 font-semibold text-slate-800">{hold.holdnavn}</h3>
-                    <div className="space-y-2">
-                      {hold.families.map((family) => (
-                        <div
-                          key={`${hold.holdnavn}-${family.familyName}`}
-                          draggable
-                          onDragStart={() =>
-                            setMovingFamily({ familyName: family.familyName, fromHold: hold.holdnavn })
-                          }
-                          className="cursor-move rounded-lg border border-slate-200 bg-white p-3"
-                        >
-                          <p className="font-medium text-slate-800">{family.familyName}</p>
-                          <ul className="mt-1 space-y-1 text-sm text-slate-600">
-                            {family.members.map((m) => (
-                              <li key={`${family.familyName}-${m}`}>• {m}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          </>
         )}
       </div>
     </main>

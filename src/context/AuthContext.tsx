@@ -17,6 +17,7 @@ interface AuthState {
   email: string | null;
   familyName: string | null;
   isAdmin: boolean;
+  adminNavn: string | null;
   needsWorkshopRegistration: boolean;
 }
 
@@ -25,7 +26,8 @@ interface AuthContextType extends AuthState {
     email: string,
     familyName: string | null,
     needsWorkshopRegistration: boolean,
-    isAdmin?: boolean
+    isAdmin?: boolean,
+    adminNavn?: string | null
   ) => void;
   logout: () => void;
   isKursusleder: boolean;
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: null,
     familyName: null,
     isAdmin: false,
+    adminNavn: null,
     needsWorkshopRegistration: false,
   });
   const [mounted, setMounted] = useState(false);
@@ -51,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: parsed.email ?? null,
           familyName: parsed.familyName ?? null,
           isAdmin: parsed.isAdmin ?? false,
+          adminNavn: parsed.adminNavn ?? null,
           needsWorkshopRegistration: parsed.needsWorkshopRegistration ?? false,
         });
       }
@@ -65,7 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string,
       familyName: string | null,
       needsWorkshopRegistration: boolean,
-      isAdmin?: boolean
+      isAdmin?: boolean,
+      adminNavn?: string | null
     ) => {
       setAuthState((prev) => {
         const admin = isAdmin ?? prev.isAdmin;
@@ -73,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           familyName: admin ? KURSUSLEDER : familyName,
           isAdmin: admin,
+          adminNavn: admin ? (adminNavn ?? prev.adminNavn ?? null) : null,
           needsWorkshopRegistration: admin ? false : needsWorkshopRegistration,
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -87,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: null,
       familyName: null,
       isAdmin: false,
+      adminNavn: null,
       needsWorkshopRegistration: false,
     });
     localStorage.removeItem(STORAGE_KEY);

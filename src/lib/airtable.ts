@@ -155,19 +155,185 @@ export async function getWorkshopBackendInfo(
     const target = normalizeWorkshopName(workshopOptionName);
 
     for (const record of records) {
-      const wsName = getFieldValue(record, WORKSHOPBACKEND_NAME_FIELDS);
-      if (!wsName || normalizeWorkshopName(wsName) !== target) continue;
-
-      return {
-        underviser: getFieldValue(record, WORKSHOPBACKEND_UNDERVISER_FIELDS),
-        hjaelpere: getFieldValue(record, WORKSHOPBACKEND_HJAELPERE_FIELDS),
-        lokale: getFieldValue(record, WORKSHOPBACKEND_LOKALE_FIELDS),
-      };
+      const parsed = readWorkshopBackendRecord(record);
+      if (!parsed || normalizeWorkshopName(parsed.workshopName) !== target) continue;
+      return parsed.info;
     }
   } catch {
     // Workshopbackend table might not exist yet
   }
   return null;
+}
+
+function readWorkshopBackendRecord(record: AirtableRecord): {
+  workshopName: string;
+  info: WorkshopBackendInfo;
+} | null {
+  const workshopName = getFieldValue(record, WORKSHOPBACKEND_NAME_FIELDS);
+  if (!workshopName) return null;
+  return {
+    workshopName,
+    info: {
+      underviser: getFieldValue(record, WORKSHOPBACKEND_UNDERVISER_FIELDS),
+      hjaelpere: getFieldValue(record, WORKSHOPBACKEND_HJAELPERE_FIELDS),
+      lokale: getFieldValue(record, WORKSHOPBACKEND_LOKALE_FIELDS),
+    },
+  };
+}
+
+function normalizePersonName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function parseStaffNames(raw: string | null): string[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(/[,;/]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function staffFieldIncludesAlle(raw: string | null): boolean {
+  if (!raw?.trim()) return false;
+  if (normalizePersonName(raw.trim()) === "alle") return true;
+  return parseStaffNames(raw).some((name) => normalizePersonName(name) === "alle");
+}
+
+function personNameMatchesStaff(adminNavn: string, staffName: string): boolean {
+  const adminNorm = normalizePersonName(adminNavn);
+  const staffNorm = normalizePersonName(staffName);
+  if (!adminNorm || !staffNorm || staffNorm === "alle") return false;
+  if (adminNorm === staffNorm) return true;
+  return (
+    staffNorm.startsWith(`${adminNorm} `) ||
+    staffNorm.startsWith(`${adminNorm}.`) ||
+    adminNorm.startsWith(`${staffNorm} `) ||
+    adminNorm.startsWith(`${staffNorm}.`)
+  );
+}
+
+function adminMatchesStaffField(adminNavn: string, raw: string | null): boolean {
+  return parseStaffNames(raw).some((name) => personNameMatchesStaff(adminNavn, name));
+}
+
+export function getAdminWorkshopRoles(
+  backend: WorkshopBackendInfo,
+  adminNavn: string
+): ("underviser" | "hjaelper" | "alle")[] {
+  if (staffFieldIncludesAlle(backend.underviser) || staffFieldIncludesAlle(backend.hjaelpere)) {
+    return ["alle"];
+  }
+  const roles: ("underviser" | "hjaelper")[] = [];
+  if (adminMatchesStaffField(adminNavn, backend.underviser)) roles.push("underviser");
+  if (adminMatchesStaffField(adminNavn, backend.hjaelpere)) roles.push("hjaelper");
+  return roles;
+}
+
+function isAdminAssignedToBackend(backend: WorkshopBackendInfo, adminNavn: string): boolean {
+  if (staffFieldIncludesAlle(backend.underviser) || staffFieldIncludesAlle(backend.hjaelpere)) {
+    return true;
+  }
+  return (
+    adminMatchesStaffField(adminNavn, backend.underviser) ||
+    adminMatchesStaffField(adminNavn, backend.hjaelpere)
+  );
+}
+
+export async function getAssignedWorkshopOptionKeys(adminNavn: string): Promise<Set<string>> {
+  const assigned = new Set<string>();
+  try {
+    const records = await fetchTableRecords(TABLE_WORKSHOPBACKEND);
+    for (const record of records) {
+      const parsed = readWorkshopBackendRecord(record);
+      if (!parsed || !isAdminAssignedToBackend(parsed.info, adminNavn)) continue;
+      assigned.add(normalizeWorkshopName(parsed.workshopName));
+    }
+  } catch {
+    // Workshopbackend table might not exist yet
+  }
+  return assigned;
+}
+
+export async function adminCanAccessWorkshopOption(
+  workshopOptionName: string,
+  bruger: BrugerInfo
+): Promise<boolean> {
+  if (!bruger.isAdmin) return false;
+  if (!bruger.adminNavn?.trim()) return true;
+  const assigned = await getAssignedWorkshopOptionKeys(bruger.adminNavn);
+  return assigned.has(normalizeWorkshopName(workshopOptionName));
+}
+
+export async function filterWorkshopCountsForAdmin<T extends { name: string }>(
+  counts: T[],
+  bruger: BrugerInfo
+): Promise<T[]> {
+  if (!bruger.isAdmin || !bruger.adminNavn?.trim()) return counts;
+  const assigned = await getAssignedWorkshopOptionKeys(bruger.adminNavn);
+  return counts.filter((item) => assigned.has(normalizeWorkshopName(item.name)));
+}
+
+const WORKSHOP_SLOT_KEYS = ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const;
+export type WorkshopSlotKey = (typeof WORKSHOP_SLOT_KEYS)[number];
+
+export interface AdminAssignedWorkshopItem {
+  slot: WorkshopSlotKey;
+  workshopName: string;
+  count: number;
+  roles: ("underviser" | "hjaelper" | "alle")[];
+  underviser: string | null;
+  hjaelpere: string | null;
+  lokale: string | null;
+}
+
+export async function getAdminAssignedWorkshops(
+  adminNavn: string
+): Promise<AdminAssignedWorkshopItem[]> {
+  const assigned = await getAssignedWorkshopOptionKeys(adminNavn);
+  const backendByName = new Map<string, WorkshopBackendInfo>();
+
+  try {
+    const records = await fetchTableRecords(TABLE_WORKSHOPBACKEND);
+    for (const record of records) {
+      const parsed = readWorkshopBackendRecord(record);
+      if (parsed) backendByName.set(normalizeWorkshopName(parsed.workshopName), parsed.info);
+    }
+  } catch {
+    // Workshopbackend table might not exist yet
+  }
+
+  const results: AdminAssignedWorkshopItem[] = [];
+
+  for (const slot of WORKSHOP_SLOT_KEYS) {
+    const counts = await getWorkshopCounts(slot);
+    for (const item of counts) {
+      if (!assigned.has(normalizeWorkshopName(item.name))) continue;
+      const backend = backendByName.get(normalizeWorkshopName(item.name)) ?? {
+        underviser: null,
+        hjaelpere: null,
+        lokale: null,
+      };
+      results.push({
+        slot,
+        workshopName: item.name,
+        count: item.count,
+        roles: getAdminWorkshopRoles(backend, adminNavn),
+        underviser: backend.underviser,
+        hjaelpere: backend.hjaelpere,
+        lokale: backend.lokale,
+      });
+    }
+  }
+
+  return results.sort((a, b) => {
+    const slotOrder = WORKSHOP_SLOT_KEYS.indexOf(a.slot) - WORKSHOP_SLOT_KEYS.indexOf(b.slot);
+    if (slotOrder !== 0) return slotOrder;
+    return a.workshopName.localeCompare(b.workshopName, "da");
+  });
 }
 
 function isVoksenType(type: string | null): boolean {
@@ -319,11 +485,13 @@ export async function hasWorkshopRegistration(email: string, year: number): Prom
 
 const KODE_FIELDS = ["A Kode", "Kode", "kode", "Code", "code"];
 const BRUGERSTATUS_FIELDS = ["Brugerstatus", "A Brugerstatus", "brugerstatus"];
+const BRUGERE_NAVN_FIELDS = ["Navne", "Navn", "navn", "Name", "name"];
 
 export interface BrugerInfo {
   recordId: string;
   code: string | null;
   isAdmin: boolean;
+  adminNavn: string | null;
 }
 
 function isAdminBrugerstatus(raw: string | null): boolean {
@@ -339,7 +507,8 @@ export async function getBrugerByEmail(email: string): Promise<BrugerInfo | null
       if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
       const code = getFieldValue(record, KODE_FIELDS)?.trim() || null;
       const isAdmin = isAdminBrugerstatus(getFieldValue(record, BRUGERSTATUS_FIELDS));
-      const info: BrugerInfo = { recordId: record.id, code, isAdmin };
+      const adminNavn = getFieldValue(record, BRUGERE_NAVN_FIELDS)?.trim() || null;
+      const info: BrugerInfo = { recordId: record.id, code, isAdmin, adminNavn };
       if (code) return info;
       fallback = info;
     }

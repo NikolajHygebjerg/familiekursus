@@ -87,7 +87,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Forkert kode eller email");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration, data.isAdmin);
+      setAuth(data.email, data.familyName, data.needsWorkshopRegistration, data.isAdmin, data.adminNavn ?? null);
       rememberEmail(e);
       router.replace("/program");
     } catch (err) {
@@ -113,7 +113,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke oprette bruger");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin);
+      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin, data.adminNavn ?? null);
       rememberEmail(e);
       router.replace("/program");
     } catch (err) {
@@ -139,7 +139,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke nulstille kode");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin);
+      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin, data.adminNavn ?? null);
       rememberEmail(e);
       router.replace("/program");
     } catch (err) {
@@ -165,7 +165,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke gemme kode");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin);
+      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin, data.adminNavn ?? null);
       rememberEmail(e);
       router.replace("/program");
     } catch (err) {
