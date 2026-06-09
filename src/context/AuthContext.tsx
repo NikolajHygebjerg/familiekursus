@@ -10,7 +10,6 @@ import {
 } from "react";
 
 const STORAGE_KEY = "familiekursus_auth";
-const DEFAULT_CODE = "1234";
 
 export const KURSUSLEDER = "Kursusleder";
 
@@ -114,5 +113,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-
-export { DEFAULT_CODE };

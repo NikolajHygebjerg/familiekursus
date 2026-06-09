@@ -12,7 +12,6 @@ const TABLE_BRUGERE = "Brugere";
 const BRUGERE_EMAIL_FIELDS = ["Email", "email", "A Email"];
 const BRUGERE_KODE_FIELDS = ["Kode", "A Kode", "kode", "Code", "code"];
 const BRUGERE_STATUS_FIELD = "Brugerstatus";
-const DEFAULT_CODE = "1234";
 
 function getYear(): number {
   return new Date().getFullYear();
@@ -55,36 +54,30 @@ export async function POST(request: Request) {
     if (action === "check") {
       const existsIn2026 = await emailExistsIn2026(email);
       const bruger = await getBrugerByEmail(email);
-      const brugerCode = bruger?.code ?? null;
+      const hasCode = !!bruger?.code;
       const brugerExists = !!bruger?.recordId;
       const familyName = existsIn2026 ? await getFamilyByEmail(email) : null;
       const needsReg = existsIn2026
         ? !(await hasWorkshopRegistration(email, getYear()))
         : true;
+      const needsSetCode = !hasCode && (brugerExists || existsIn2026);
 
-      if (brugerExists && brugerCode) {
+      if (hasCode) {
         return NextResponse.json({
           existsIn2026,
           hasBruger: true,
-          defaultCode: false,
+          needsSetCode: false,
+          nextStep: "code" as const,
           familyName,
           needsWorkshopRegistration: needsReg,
         });
       }
-      if (brugerExists && !brugerCode) {
+      if (needsSetCode) {
         return NextResponse.json({
           existsIn2026,
           hasBruger: false,
-          defaultCode: true,
-          familyName,
-          needsWorkshopRegistration: needsReg,
-        });
-      }
-      if (existsIn2026) {
-        return NextResponse.json({
-          existsIn2026,
-          hasBruger: false,
-          defaultCode: true,
+          needsSetCode: true,
+          nextStep: "setCode" as const,
           familyName,
           needsWorkshopRegistration: needsReg,
         });
@@ -92,7 +85,8 @@ export async function POST(request: Request) {
       return NextResponse.json({
         existsIn2026,
         hasBruger: false,
-        defaultCode: false,
+        needsSetCode: true,
+        nextStep: "create" as const,
         familyName,
         needsWorkshopRegistration: true,
       });
@@ -152,10 +146,6 @@ export async function POST(request: Request) {
           [BRUGERE_KODE_FIELDS[0]]: code,
         });
       } else {
-        const existsIn2026 = await emailExistsIn2026(email);
-        if (!existsIn2026) {
-          return NextResponse.json({ error: "Email findes ikke i systemet" }, { status: 404 });
-        }
         await createAirtableRecord(TABLE_BRUGERE, {
           [BRUGERE_EMAIL_FIELDS[0]]: email,
           [BRUGERE_KODE_FIELDS[0]]: code,
@@ -168,21 +158,19 @@ export async function POST(request: Request) {
 
     if (action === "login") {
       const bruger = await getBrugerByEmail(email);
-      const existsIn2026 = await emailExistsIn2026(email);
-      const expectedCode = bruger?.code ?? (existsIn2026 ? DEFAULT_CODE : null);
 
-      if (!expectedCode) {
+      if (!bruger?.code) {
         return NextResponse.json(
-          { error: "Email findes ikke. Opret en bruger med din email og en kode." },
-          { status: 404 }
+          { error: "Du skal vælge en kode først. Gå tilbage og fortsæt med din email." },
+          { status: 403 }
         );
       }
 
-      if (code !== expectedCode) {
+      if (code !== bruger.code) {
         return NextResponse.json({ error: "Forkert kode" }, { status: 401 });
       }
 
-      return NextResponse.json(await buildAuthResponse(email, bruger?.isAdmin ?? false));
+      return NextResponse.json(await buildAuthResponse(email, bruger.isAdmin));
     }
 
     return NextResponse.json({ error: "Ukendt handling" }, { status: 400 });

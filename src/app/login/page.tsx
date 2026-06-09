@@ -30,7 +30,8 @@ export default function LoginPage() {
   const [checkResult, setCheckResult] = useState<{
     existsIn2026: boolean;
     hasBruger: boolean;
-    defaultCode: boolean;
+    needsSetCode: boolean;
+    nextStep: "code" | "setCode" | "create";
     familyName: string | null;
     needsWorkshopRegistration: boolean;
   } | null>(null);
@@ -65,13 +66,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fejl");
       setCheckResult(data);
-      if (data.hasBruger) {
-        setStep("code");
-      } else if (data.defaultCode) {
-        setStep("setCode");
-      } else {
-        setStep("create");
-      }
+      setStep(data.nextStep);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke tjekke email");
     } finally {
@@ -248,7 +243,9 @@ export default function LoginPage() {
           <>
             <p className="mb-2 text-sm text-slate-600">
               {step === "setCode"
-                ? "Det er første gang du logger ind. Vælg en kode til dig selv (mindst 4 tegn):"
+                ? checkResult?.existsIn2026
+                  ? "Velkommen! Vælg en personlig kode til dig selv (mindst 4 tegn) — det gør du kun én gang:"
+                  : "Vælg en personlig kode til dig selv (mindst 4 tegn):"
                 : "Indtast din kode:"}
             </p>
             <input
@@ -283,10 +280,16 @@ export default function LoginPage() {
               </button>
               <button
                 onClick={step === "code" ? handleLogin : handleSetCode}
-                disabled={loading || !code.trim()}
+                disabled={loading || !code.trim() || (step === "setCode" && code.length < 4)}
                 className="flex-1 rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
               >
-                {loading ? "Logger ind..." : "Log ind"}
+                {loading
+                  ? step === "setCode"
+                    ? "Gemmer..."
+                    : "Logger ind..."
+                  : step === "setCode"
+                    ? "Gem kode og log ind"
+                    : "Log ind"}
               </button>
             </div>
           </>
@@ -337,7 +340,8 @@ export default function LoginPage() {
         {step === "create" && (
           <>
             <p className="mb-4 text-sm text-slate-600">
-              Din email findes ikke i systemet. Opret en bruger med din email og en kode (mindst 4 tegn):
+              Din email findes ikke i systemet endnu. Opret en bruger ved at vælge en personlig kode
+              (mindst 4 tegn):
             </p>
             <input
               type="email"
