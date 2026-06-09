@@ -11,11 +11,11 @@ const PUBLIC_PATHS = ["/login", "/workshop-tilmelding"];
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { email, needsWorkshopRegistration, logout } = useAuth();
+  const { email, needsWorkshopRegistration, logout, isAuthReady } = useAuth();
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   useEffect(() => {
-    if (isPublic) return;
+    if (!isAuthReady || isPublic) return;
     if (!email) {
       router.replace("/login");
       return;
@@ -23,10 +23,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (needsWorkshopRegistration) {
       router.replace("/workshop-tilmelding");
     }
-  }, [isPublic, email, needsWorkshopRegistration, router]);
+  }, [isAuthReady, isPublic, email, needsWorkshopRegistration, router]);
 
   if (isPublic) {
     return <>{children}</>;
+  }
+
+  if (!isAuthReady) {
+    return null;
   }
 
   if (!email) {

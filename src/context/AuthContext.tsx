@@ -22,6 +22,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
+  isAuthReady: boolean;
   setAuth: (
     email: string,
     familyName: string | null,
@@ -35,33 +36,40 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [auth, setAuthState] = useState<AuthState>({
+function readStoredAuth(): AuthState {
+  const empty: AuthState = {
     email: null,
     familyName: null,
     isAdmin: false,
     adminNavn: null,
     needsWorkshopRegistration: false,
-  });
-  const [mounted, setMounted] = useState(false);
+  };
+
+  if (typeof window === "undefined") return empty;
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return empty;
+    const parsed = JSON.parse(stored);
+    return {
+      email: parsed.email ?? null,
+      familyName: parsed.familyName ?? null,
+      isAdmin: parsed.isAdmin ?? false,
+      adminNavn: parsed.adminNavn ?? null,
+      needsWorkshopRegistration: parsed.needsWorkshopRegistration ?? false,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [auth, setAuthState] = useState<AuthState>(() => readStoredAuth());
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setAuthState({
-          email: parsed.email ?? null,
-          familyName: parsed.familyName ?? null,
-          isAdmin: parsed.isAdmin ?? false,
-          adminNavn: parsed.adminNavn ?? null,
-          needsWorkshopRegistration: parsed.needsWorkshopRegistration ?? false,
-        });
-      }
-    } catch {
-      // ignore
-    }
-    setMounted(true);
+    setAuthState(readStoredAuth());
+    setIsAuthReady(true);
   }, []);
 
   const setAuth = useCallback(
@@ -105,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         ...auth,
+        isAuthReady,
         setAuth,
         logout,
         isKursusleder,

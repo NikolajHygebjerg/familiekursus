@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
@@ -10,8 +10,8 @@ const MAX_HISTORY = 12;
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth } = useAuth();
-  const [email, setEmail] = useState("");
+  const { setAuth, email, isAuthReady, needsWorkshopRegistration } = useAuth();
+  const [emailInput, setEmailInput] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<Step>("email");
   const [loading, setLoading] = useState(false);
@@ -46,14 +46,19 @@ export default function LoginPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!isAuthReady || !email) return;
+    router.replace(needsWorkshopRegistration ? "/workshop-tilmelding" : "/program");
+  }, [isAuthReady, email, needsWorkshopRegistration, router]);
+
   const emailSuggestions = Array.from(
     new Set(
-      emailHistory.filter((h) => h.toLowerCase().includes(email.trim().toLowerCase()))
+      emailHistory.filter((h) => h.toLowerCase().includes(emailInput.trim().toLowerCase()))
     )
   ).slice(0, 12);
 
   const handleEmailSubmit = useCallback(async () => {
-    const e = email.trim().toLowerCase();
+    const e = emailInput.trim().toLowerCase();
     if (!e) return;
     setLoading(true);
     setError(null);
@@ -72,10 +77,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email]);
+  }, [emailInput]);
 
   const handleLogin = useCallback(async () => {
-    const e = email.trim().toLowerCase();
+    const e = emailInput.trim().toLowerCase();
     if (!e || !code.trim()) return;
     setLoading(true);
     setError(null);
@@ -95,10 +100,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router, rememberEmail]);
+  }, [emailInput, code, setAuth, router, rememberEmail]);
 
   const handleCreateUser = useCallback(async () => {
-    const e = email.trim().toLowerCase();
+    const e = emailInput.trim().toLowerCase();
     if (!e || !code.trim() || code.length < 4) {
       setError("Vælg en kode på mindst 4 tegn");
       return;
@@ -121,10 +126,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router, rememberEmail]);
+  }, [emailInput, code, setAuth, router, rememberEmail]);
 
   const handleGlemtKode = useCallback(async () => {
-    const e = email.trim().toLowerCase();
+    const e = emailInput.trim().toLowerCase();
     if (!e || !code.trim() || code.length < 4) {
       setError("Vælg en ny kode på mindst 4 tegn");
       return;
@@ -147,10 +152,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router, rememberEmail]);
+  }, [emailInput, code, setAuth, router, rememberEmail]);
 
   const handleSetCode = useCallback(async () => {
-    const e = email.trim().toLowerCase();
+    const e = emailInput.trim().toLowerCase();
     if (!e || !code.trim() || code.length < 4) {
       setError("Vælg en kode på mindst 4 tegn");
       return;
@@ -173,7 +178,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, code, setAuth, router, rememberEmail]);
+  }, [emailInput, code, setAuth, router, rememberEmail]);
 
   const reset = () => {
     setStep("email");
@@ -181,6 +186,10 @@ export default function LoginPage() {
     setError(null);
     setCheckResult(null);
   };
+
+  if (!isAuthReady || email) {
+    return null;
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6">
@@ -197,9 +206,9 @@ export default function LoginPage() {
             <div className="relative">
               <input
                 type="email"
-                value={email}
+                value={emailInput}
                 onChange={(e) => {
-                  setEmail(e.target.value);
+                  setEmailInput(e.target.value);
                   setShowEmailSuggestions(true);
                 }}
                 onFocus={() => setShowEmailSuggestions(true)}
@@ -217,7 +226,7 @@ export default function LoginPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setEmail(suggestion);
+                          setEmailInput(suggestion);
                           setShowEmailSuggestions(false);
                         }}
                         className="w-full px-4 py-2 text-left text-slate-800 hover:bg-amber-50"
@@ -231,7 +240,7 @@ export default function LoginPage() {
             </div>
             <button
               onClick={handleEmailSubmit}
-              disabled={loading || !email.trim()}
+              disabled={loading || !emailInput.trim()}
               className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
             >
               {loading ? "Tjekker..." : "Fortsæt"}
@@ -302,7 +311,7 @@ export default function LoginPage() {
             </p>
             <input
               type="email"
-              value={email}
+              value={emailInput}
               readOnly
               className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
             />
@@ -345,7 +354,7 @@ export default function LoginPage() {
             </p>
             <input
               type="email"
-              value={email}
+              value={emailInput}
               readOnly
               className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
             />
