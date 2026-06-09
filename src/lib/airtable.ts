@@ -5,6 +5,7 @@ const TABLE_BETALT = "Betalt";
 const TABLE_PROGRAM = "Program";
 const TABLE_BRUGERE = "Brugere";
 const TABLE_WORKSHOPOVERSIGT = "Workshopoversigt";
+const TABLE_WORKSHOPBACKEND = "Workshopbackend";
 const TABLE_FAMILIELOEB = "Familieløbet";
 
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
@@ -93,13 +94,14 @@ const FAMILIELOEB_MEDLEMMER_FIELDS = ["Medlemmer", "A Medlemmer"];
 
 function getFieldValue(record: AirtableRecord, possibleNames: string[]): string | null {
   for (const name of possibleNames) {
-    if (name in record.fields && record.fields[name]) {
-      const value = record.fields[name];
-      if (typeof value === "string") return value.trim() || null;
-      if (Array.isArray(value) && value.length > 0)
-        return (typeof value[0] === "string" ? value[0] : String(value[0])).trim() || null;
-      return String(value).trim() || null;
-    }
+    if (!(name in record.fields)) continue;
+    const value = record.fields[name];
+    if (value == null || value === "") continue;
+    if (typeof value === "string") return value.trim() || null;
+    if (typeof value === "number") return String(value);
+    if (Array.isArray(value) && value.length > 0)
+      return (typeof value[0] === "string" ? value[0] : String(value[0])).trim() || null;
+    return String(value).trim() || null;
   }
   return null;
 }
@@ -122,12 +124,55 @@ export interface WorkshopFamilyGroup {
   members: WorkshopParticipantDetail[];
 }
 
-function isBarnType(type: string | null): boolean {
-  return type?.trim().toLowerCase() === "barn";
+export interface WorkshopBackendInfo {
+  underviser: string | null;
+  hjaelpere: string | null;
+  lokale: string | null;
+}
+
+const WORKSHOPBACKEND_NAME_FIELDS = ["Workshop", "workshop", "Navn", "navn"];
+const WORKSHOPBACKEND_UNDERVISER_FIELDS = ["Underviser", "underviser"];
+const WORKSHOPBACKEND_HJAELPERE_FIELDS = ["Hjælpere", "Hjaelpere", "Helpere"];
+const WORKSHOPBACKEND_LOKALE_FIELDS = ["Lokale", "lokale", "Room", "room"];
+
+function normalizeWorkshopName(name: string): string {
+  return name
+    .replace(/[\u2028\u2029]/g, "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+export async function getWorkshopBackendInfo(
+  workshopOptionName: string
+): Promise<WorkshopBackendInfo | null> {
+  try {
+    const records = await fetchTableRecords(TABLE_WORKSHOPBACKEND);
+    const target = normalizeWorkshopName(workshopOptionName);
+
+    for (const record of records) {
+      const wsName = getFieldValue(record, WORKSHOPBACKEND_NAME_FIELDS);
+      if (!wsName || normalizeWorkshopName(wsName) !== target) continue;
+
+      return {
+        underviser: getFieldValue(record, WORKSHOPBACKEND_UNDERVISER_FIELDS),
+        hjaelpere: getFieldValue(record, WORKSHOPBACKEND_HJAELPERE_FIELDS),
+        lokale: getFieldValue(record, WORKSHOPBACKEND_LOKALE_FIELDS),
+      };
+    }
+  } catch {
+    // Workshopbackend table might not exist yet
+  }
+  return null;
+}
+
+function isVoksenType(type: string | null): boolean {
+  return type?.trim().toLowerCase() === "voksen";
 }
 
 function formatParticipantAlder(type: string | null, alderRaw: string | null): string | null {
-  if (!isBarnType(type) || !alderRaw?.trim()) return null;
+  if (isVoksenType(type) || !alderRaw?.trim()) return null;
   const trimmed = alderRaw.trim();
   return trimmed.endsWith("år") ? trimmed : `${trimmed} år`;
 }
