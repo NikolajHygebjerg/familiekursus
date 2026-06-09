@@ -51,12 +51,13 @@ function readStoredAuth(): AuthState {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return empty;
     const parsed = JSON.parse(stored);
+    const isAdmin = parsed.isAdmin ?? false;
     return {
       email: parsed.email ?? null,
-      familyName: parsed.familyName ?? null,
-      isAdmin: parsed.isAdmin ?? false,
-      adminNavn: parsed.adminNavn ?? null,
-      needsWorkshopRegistration: parsed.needsWorkshopRegistration ?? false,
+      familyName: isAdmin ? KURSUSLEDER : (parsed.familyName ?? null),
+      isAdmin,
+      adminNavn: isAdmin ? (parsed.adminNavn ?? null) : null,
+      needsWorkshopRegistration: isAdmin ? false : (parsed.needsWorkshopRegistration ?? false),
     };
   } catch {
     return empty;
@@ -68,7 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    setAuthState(readStoredAuth());
+    const stored = readStoredAuth();
+    setAuthState(stored);
+    if (stored.email) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    }
     setIsAuthReady(true);
   }, []);
 
@@ -107,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  const isKursusleder = auth.familyName === KURSUSLEDER;
+  const isKursusleder = auth.isAdmin || auth.familyName === KURSUSLEDER;
 
   return (
     <AuthContext.Provider

@@ -24,7 +24,7 @@ interface FamilyMember {
 
 export default function WorkshopTilmeldingPage() {
   const router = useRouter();
-  const { email, setAuth } = useAuth();
+  const { email, setAuth, isAdmin, isAuthReady } = useAuth();
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [options, setOptions] = useState<Record<string, string[]>>({
     workshop1: [],
@@ -55,10 +55,18 @@ export default function WorkshopTilmeldingPage() {
   }, [email]);
 
   useEffect(() => {
+    if (!isAuthReady) return;
     if (!email) {
       router.replace("/login");
       return;
     }
+    if (isAdmin) {
+      router.replace("/program");
+    }
+  }, [isAuthReady, email, isAdmin, router]);
+
+  useEffect(() => {
+    if (!email || isAdmin) return;
     Promise.all([
       fetch(`/api/workshop-options?year=${new Date().getFullYear()}`).then((res) => (res.ok ? res.json() : {})),
       fetch(`/api/families/email?email=${encodeURIComponent(email)}`).then((res) => (res.ok ? res.json() : [])),
@@ -69,7 +77,7 @@ export default function WorkshopTilmeldingPage() {
       })
       .catch(() => setLoading(false))
       .finally(() => setLoading(false));
-  }, [email, router]);
+  }, [email, isAdmin, router]);
 
   const voksneFraApi = members.filter(
     (m) =>

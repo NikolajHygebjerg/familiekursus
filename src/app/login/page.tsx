@@ -10,7 +10,7 @@ const MAX_HISTORY = 12;
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth, email, isAuthReady, needsWorkshopRegistration } = useAuth();
+  const { setAuth, email, isAuthReady, needsWorkshopRegistration, isAdmin } = useAuth();
   const [emailInput, setEmailInput] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<Step>("email");
@@ -48,8 +48,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isAuthReady || !email) return;
-    router.replace(needsWorkshopRegistration ? "/workshop-tilmelding" : "/program");
-  }, [isAuthReady, email, needsWorkshopRegistration, router]);
+    router.replace(!isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : "/program");
+  }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 
   const emailSuggestions = Array.from(
     new Set(

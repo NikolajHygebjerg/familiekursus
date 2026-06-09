@@ -58,9 +58,12 @@ export async function POST(request: Request) {
       const hasCode = !!bruger?.code;
       const brugerExists = !!bruger?.recordId;
       const familyName = existsIn2026 ? await getFamilyByEmail(email) : null;
-      const needsReg = existsIn2026
-        ? !(await hasWorkshopRegistration(email, getYear()))
-        : true;
+      const isAdmin = bruger?.isAdmin ?? false;
+      const needsReg = isAdmin
+        ? false
+        : existsIn2026
+          ? !(await hasWorkshopRegistration(email, getYear()))
+          : true;
       const needsSetCode = !hasCode && (brugerExists || existsIn2026);
 
       if (hasCode) {
