@@ -21,6 +21,12 @@ interface WorkshopFamilyGroup {
   members: WorkshopParticipantDetail[];
 }
 
+interface WorkshopBackendInfo {
+  underviser: string | null;
+  hjaelpere: string | null;
+  lokale: string | null;
+}
+
 const WORKSHOP_LABELS: Record<string, string> = {
   workshop1: "Workshop 1",
   workshop2: "Workshop 2",
@@ -38,6 +44,7 @@ export default function AntalPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [participantFamilies, setParticipantFamilies] = useState<WorkshopFamilyGroup[]>([]);
+  const [workshopBackend, setWorkshopBackend] = useState<WorkshopBackendInfo | null>(null);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantError, setParticipantError] = useState<string | null>(null);
 
@@ -46,6 +53,7 @@ export default function AntalPage() {
     setError(null);
     setSelectedOption(null);
     setParticipantFamilies([]);
+    setWorkshopBackend(null);
     setParticipantError(null);
     fetch(`/api/workshops?workshop=${selectedWorkshop}`)
       .then((res) => {
@@ -63,6 +71,7 @@ export default function AntalPage() {
     setLoadingParticipants(true);
     setParticipantError(null);
     setParticipantFamilies([]);
+    setWorkshopBackend(null);
 
     fetch(
       `/api/workshops?workshop=${selectedWorkshop}&option=${encodeURIComponent(optionName)}&email=${encodeURIComponent(email)}`
@@ -75,8 +84,9 @@ export default function AntalPage() {
         }
         return res.json();
       })
-      .then((body: { families: WorkshopFamilyGroup[] }) => {
+      .then((body: { families: WorkshopFamilyGroup[]; backend: WorkshopBackendInfo | null }) => {
         setParticipantFamilies(body.families ?? []);
+        setWorkshopBackend(body.backend ?? null);
       })
       .catch((err) => setParticipantError(err.message))
       .finally(() => setLoadingParticipants(false));
@@ -211,6 +221,7 @@ export default function AntalPage() {
                 onClick={() => {
                   setSelectedOption(null);
                   setParticipantFamilies([]);
+                  setWorkshopBackend(null);
                   setParticipantError(null);
                 }}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
@@ -218,6 +229,35 @@ export default function AntalPage() {
                 Luk
               </button>
             </div>
+
+            {!loadingParticipants && !participantError && (
+              <dl className="mb-6 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Underviser
+                  </dt>
+                  <dd className="mt-1 text-sm text-slate-800">
+                    {workshopBackend?.underviser || "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Hjælpere
+                  </dt>
+                  <dd className="mt-1 text-sm text-slate-800">
+                    {workshopBackend?.hjaelpere || "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Lokale
+                  </dt>
+                  <dd className="mt-1 text-sm text-slate-800">
+                    {workshopBackend?.lokale || "—"}
+                  </dd>
+                </div>
+              </dl>
+            )}
 
             {loadingParticipants && (
               <p className="text-slate-500">Henter deltagere...</p>

@@ -1,6 +1,7 @@
 import {
   getWorkshopCounts,
   getWorkshopParticipantsGrouped,
+  getWorkshopBackendInfo,
   getBrugerByEmail,
 } from "@/lib/airtable";
 import { NextResponse } from "next/server";
@@ -37,8 +38,11 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
       }
 
-      const families = await getWorkshopParticipantsGrouped(workshop, option);
-      return NextResponse.json({ option, families });
+      const [families, backend] = await Promise.all([
+        getWorkshopParticipantsGrouped(workshop, option),
+        getWorkshopBackendInfo(option),
+      ]);
+      return NextResponse.json({ option, families, backend });
     }
 
     const counts = await getWorkshopCounts(workshop);
