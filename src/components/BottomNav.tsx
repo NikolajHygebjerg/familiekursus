@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import MeetUsIcon from "@/components/MeetUsIcon";
+import type { ReactNode } from "react";
 
-const BASE_NAV_ITEMS = [
+const BASE_NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
   { href: "/program", label: "Program", icon: "📅" },
+  { href: "/mod-os", label: "Mød os", icon: <MeetUsIcon className="h-6 w-6" /> },
   { href: "/tilmeldte", label: "Dine workshops", icon: "✅" },
   { href: "/", label: "Workshopoversigt", icon: "📊" },
   { href: "/tilmeld", label: "Tilmeld", icon: "📝" },
 ];
 
-const ADMIN_NAV_ITEMS = [{ href: "/familieloeb", label: "Familieløbet", icon: "🏃" }];
+const ADMIN_NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
+  { href: "/familieloeb", label: "Familieløbet", icon: "🏃" },
+];
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -27,11 +32,11 @@ export default function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-1 flex-col items-center gap-1 py-3 text-sm transition-colors ${
+              className={`flex flex-1 flex-col items-center gap-1 px-0.5 py-2.5 text-xs transition-colors sm:text-sm ${
                 isActive ? "text-amber-600 font-semibold" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              <span className="text-lg">{icon}</span>
+              <span className="flex h-6 items-center justify-center text-lg">{icon}</span>
               <span className="text-center leading-tight">{label}</span>
               {isActive && <span className="h-0.5 w-12 rounded-full bg-amber-500" />}
             </Link>
