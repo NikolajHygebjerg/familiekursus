@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 const BASE_NAV_ITEMS: { href: string; label: string; icon: ReactNode }[] = [
   { href: "/program", label: "Program", icon: "📅" },
   { href: "/mod-os", label: "Mød os", icon: <MeetUsIcon className="h-6 w-6" /> },
+  { href: "/sange", label: "Sange", icon: "🎵" },
   { href: "/tilmeldte", label: "Dine workshops", icon: "✅" },
   { href: "/", label: "Workshopoversigt", icon: "📊" },
   { href: "/tilmeld", label: "Tilmeld", icon: "📝" },
