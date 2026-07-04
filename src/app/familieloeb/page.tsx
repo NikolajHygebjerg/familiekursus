@@ -25,6 +25,49 @@ export default function FamilieloebPage() {
   const [movingFamily, setMovingFamily] = useState<{ familyName: string; fromHold: string } | null>(
     null
   );
+  const [saving, setSaving] = useState(false);
+
+  function loadHolds() {
+    setLoading(true);
+    setError(null);
+    fetch("/api/familieloeb?all=1")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setFamilieloebHolds(Array.isArray(data?.holds) ? data.holds : []))
+      .catch(() => {
+        setFamilieloebHolds([]);
+        setError("Kunne ikke hente hold");
+      })
+      .finally(() => setLoading(false));
+  }
+
+  async function moveFamilyToHold(toHold: string) {
+    if (!movingFamily || movingFamily.fromHold === toHold || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/familieloeb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "moveFamily",
+          familyName: movingFamily.familyName,
+          fromHold: movingFamily.fromHold,
+          toHold,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Kunne ikke flytte familie");
+      } else {
+        setFamilieloebHolds(Array.isArray(data.holds) ? data.holds : []);
+      }
+    } catch {
+      setError("Kunne ikke flytte familie");
+    } finally {
+      setMovingFamily(null);
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!isKursusleder) {
@@ -34,12 +77,7 @@ export default function FamilieloebPage() {
 
   useEffect(() => {
     if (!isKursusleder) return;
-    setLoading(true);
-    fetch("/api/familieloeb?all=1")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setFamilieloebHolds(Array.isArray(data?.holds) ? data.holds : []))
-      .catch(() => setFamilieloebHolds([]))
-      .finally(() => setLoading(false));
+    loadHolds();
   }, [isKursusleder]);
 
   if (!isKursusleder) {
@@ -50,10 +88,28 @@ export default function FamilieloebPage() {
     <main className="min-h-screen p-6 md:p-10">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-800">Familieløbet</h1>
-          <p className="mt-1 text-slate-600">
-            Oversigt over alle hold. Træk en familie fra et hold til et andet for at flytte den.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">Familieløbet</h1>
+              <p className="mt-1 text-slate-600">
+                Træk en familie til et andet hold for at flytte den. Ændringer gemmes i Airtable.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadHolds}
+              disabled={loading || saving}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Genindlæs hold
+            </button>
+          </div>
+          {movingFamily && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-800">
+              Flytter <span className="font-semibold">{movingFamily.familyName}</span> fra{" "}
+              {movingFamily.fromHold} — slip på et andet hold.
+            </p>
+          )}
         </header>
 
         {error && (
@@ -71,39 +127,33 @@ export default function FamilieloebPage() {
             {familieloebHolds.map((hold) => (
               <div
                 key={hold.recordId}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={async () => {
-                  if (!movingFamily || movingFamily.fromHold === hold.holdnavn) return;
-                  const res = await fetch("/api/familieloeb", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      action: "moveFamily",
-                      familyName: movingFamily.familyName,
-                      fromHold: movingFamily.fromHold,
-                      toHold: hold.holdnavn,
-                    }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok) {
-                    setError(data.error || "Kunne ikke flytte familie");
-                  } else {
-                    setFamilieloebHolds(Array.isArray(data.holds) ? data.holds : []);
-                  }
-                  setMovingFamily(null);
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
                 }}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void moveFamilyToHold(hold.holdnavn);
+                }}
+                className={`rounded-xl border bg-white p-4 shadow-lg transition-colors ${
+                  movingFamily && movingFamily.fromHold !== hold.holdnavn
+                    ? "border-amber-300 ring-2 ring-amber-100"
+                    : "border-slate-200"
+                }`}
               >
                 <h2 className="mb-3 text-lg font-semibold text-slate-800">{hold.holdnavn}</h2>
                 <div className="space-y-2">
                   {hold.families.map((family) => (
                     <div
                       key={`${hold.holdnavn}-${family.familyName}`}
-                      draggable
-                      onDragStart={() =>
-                        setMovingFamily({ familyName: family.familyName, fromHold: hold.holdnavn })
-                      }
-                      className="cursor-move rounded-lg border border-slate-200 bg-slate-50 p-3"
+                      draggable={!saving}
+                      onDragStart={(e) => {
+                        setMovingFamily({ familyName: family.familyName, fromHold: hold.holdnavn });
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      className={`cursor-move rounded-lg border border-slate-200 bg-slate-50 p-3 ${
+                        movingFamily?.familyName === family.familyName ? "opacity-50" : ""
+                      }`}
                     >
                       <p className="font-medium text-slate-800">{family.familyName}</p>
                       <ul className="mt-1 space-y-1 text-sm text-slate-600">

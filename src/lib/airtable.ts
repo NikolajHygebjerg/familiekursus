@@ -1235,28 +1235,15 @@ export async function syncFamilieloebAssignments(): Promise<FamilyRaceInfo[]> {
   return infos;
 }
 
-export async function getFamilieloebInfoByEmail(email: string): Promise<FamilyRaceInfo | null> {
-  const records = await fetchTableRecords(TABLE_2026);
-  let familyName: string | null = null;
-  for (const rec of records) {
-    const recEmail = getEmailFromRecord(rec);
-    if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
-    familyName = getFieldValue(rec, FAMILIE_FIELDS);
-    if (familyName) break;
-  }
-  if (!familyName) return null;
-
-  const assignments = await syncFamilieloebAssignments();
-  for (const hold of assignments) {
-    if (hold.membersText.toLowerCase().includes(`${familyName.toLowerCase()}:`)) {
-      return hold;
-    }
-  }
-  return null;
+function compareHoldNames(a: string, b: string): number {
+  const num = (name: string) => {
+    const match = name.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+  return num(a) - num(b) || a.localeCompare(b, "da");
 }
 
-export async function getAllFamilieloebHolds(): Promise<FamilyRaceHoldView[]> {
-  await syncFamilieloebAssignments();
+async function readFamilieloebHoldsFromAirtable(): Promise<FamilyRaceHoldView[]> {
   const records = await fetchTableRecords(TABLE_FAMILIELOEB);
   const result: FamilyRaceHoldView[] = [];
   for (const rec of records) {
@@ -1270,7 +1257,31 @@ export async function getAllFamilieloebHolds(): Promise<FamilyRaceHoldView[]> {
       families: parseFamilyRaceMembersText(membersText),
     });
   }
-  return result.sort((a, b) => a.holdnavn.localeCompare(b.holdnavn));
+  return result.sort((a, b) => compareHoldNames(a.holdnavn, b.holdnavn));
+}
+
+export async function getFamilieloebInfoByEmail(email: string): Promise<FamilyRaceInfo | null> {
+  const records = await fetchTableRecords(TABLE_2026);
+  let familyName: string | null = null;
+  for (const rec of records) {
+    const recEmail = getEmailFromRecord(rec);
+    if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
+    familyName = getFieldValue(rec, FAMILIE_FIELDS);
+    if (familyName) break;
+  }
+  if (!familyName) return null;
+
+  const holds = await readFamilieloebHoldsFromAirtable();
+  for (const hold of holds) {
+    if (hold.membersText.toLowerCase().includes(`${familyName.toLowerCase()}:`)) {
+      return { holdnavn: hold.holdnavn, membersText: hold.membersText };
+    }
+  }
+  return null;
+}
+
+export async function getAllFamilieloebHolds(): Promise<FamilyRaceHoldView[]> {
+  return readFamilieloebHoldsFromAirtable();
 }
 
 export async function moveFamilyBetweenFamilieloebHolds(
@@ -1279,7 +1290,7 @@ export async function moveFamilyBetweenFamilieloebHolds(
   toHold: string
 ): Promise<FamilyRaceHoldView[]> {
   if (!familyName.trim() || !fromHold.trim() || !toHold.trim() || fromHold === toHold) {
-    return getAllFamilieloebHolds();
+    return readFamilieloebHoldsFromAirtable();
   }
 
   const fieldNames = await getTableFieldNames(TABLE_FAMILIELOEB);
@@ -1303,7 +1314,7 @@ export async function moveFamilyBetweenFamilieloebHolds(
   const toFamilies = parseFamilyRaceMembersText(getFieldValue(toRec, FAMILIELOEB_MEDLEMMER_FIELDS) || "");
 
   const idx = fromFamilies.findIndex((f) => f.familyName.toLowerCase() === familyName.toLowerCase());
-  if (idx === -1) return getAllFamilieloebHolds();
+  if (idx === -1) return readFamilieloebHoldsFromAirtable();
 
   const [moved] = fromFamilies.splice(idx, 1);
   if (!toFamilies.some((f) => f.familyName.toLowerCase() === moved.familyName.toLowerCase())) {
@@ -1320,7 +1331,7 @@ export async function moveFamilyBetweenFamilieloebHolds(
     [medlemmerField]: buildFamilyRaceMembersText(toFamilies),
   });
 
-  return getAllFamilieloebHolds();
+  return readFamilieloebHoldsFromAirtable();
 }
 
 // --- Program-tabel (dagsprogrammer fra Airtable) ---

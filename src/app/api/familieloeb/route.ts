@@ -2,6 +2,7 @@ import {
   getAllFamilieloebHolds,
   getFamilieloebInfoByEmail,
   moveFamilyBetweenFamilieloebHolds,
+  syncFamilieloebAssignments,
 } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
@@ -49,6 +50,12 @@ export async function POST(request: Request) {
       fromHold?: string;
       toHold?: string;
     };
+
+    if (action === "resync") {
+      await syncFamilieloebAssignments();
+      const holds = await getAllFamilieloebHolds();
+      return NextResponse.json({ ok: true, holds });
+    }
 
     if (action !== "moveFamily") {
       return NextResponse.json({ error: "Ukendt handling" }, { status: 400 });
