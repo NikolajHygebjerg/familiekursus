@@ -14,7 +14,7 @@ export default function MoedOsPage() {
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
         {MOED_OS_PEOPLE.map((person) => (
           <li
-            key={person.name}
+            key={person.image}
             className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
           >
             <div className="relative aspect-square w-full bg-slate-100">
