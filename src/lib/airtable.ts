@@ -1764,7 +1764,91 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
 
 // --- Program ansvar (hvem er ansvarlig for hvilket programpunkt) ---
 
-const TABLE_PROGRAM_ANSVAR = "Program ansvar";
+const PROGRAM_ANSVAR_TABLE_CANDIDATES = [
+  "Program ansvar",
+  "Program Ansvar",
+  "Programansvar",
+  "Program ansvarlige",
+];
+let cachedProgramAnsvarTableId: string | null | undefined;
+
+function normalizeTableLookupName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+async function resolveProgramAnsvarTableId(): Promise<string> {
+  if (cachedProgramAnsvarTableId) return cachedProgramAnsvarTableId;
+
+  const apiKey = process.env.AIRTABLE_API_KEY;
+  if (!apiKey) {
+    throw new Error("AIRTABLE_API_KEY er ikke sat.");
+  }
+
+  try {
+    const url = `https://api.airtable.com/v0/meta/bases/${AIRTABLE_BASE_ID}/tables`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { tables?: { id: string; name?: string }[] };
+      for (const candidate of PROGRAM_ANSVAR_TABLE_CANDIDATES) {
+        const table = data.tables?.find((entry) => entry.name === candidate);
+        if (table?.id) {
+          cachedProgramAnsvarTableId = table.id;
+          return table.id;
+        }
+      }
+      const fuzzy = data.tables?.find((entry) => {
+        if (!entry.name) return false;
+        const normalized = normalizeTableLookupName(entry.name);
+        return normalized.includes("program") && normalized.includes("ansvar");
+      });
+      if (fuzzy?.id) {
+        cachedProgramAnsvarTableId = fuzzy.id;
+        return fuzzy.id;
+      }
+    }
+  } catch {
+    // Fortsæt til direkte opslag
+  }
+
+  for (const candidate of PROGRAM_ANSVAR_TABLE_CANDIDATES) {
+    try {
+      await fetchTableRecords(candidate);
+      cachedProgramAnsvarTableId = candidate;
+      return candidate;
+    } catch {
+      // Prøv næste navn
+    }
+  }
+
+  throw new Error(
+    "Airtable-tabellen «Program ansvar» findes ikke, eller API-nøglen har ikke adgang. Opret tabellen med felterne Program nøgle, Dag, Tid, Titel, Admin email, Admin navn og Note, og giv token skriverettigheder."
+  );
+}
+
+function formatProgramAnsvarAirtableError(error: unknown): Error {
+  if (!(error instanceof Error)) {
+    return new Error("Kunne ikke gemme ansvarlige i Airtable.");
+  }
+  const message = error.message;
+  if (
+    message.includes("403") ||
+    message.includes("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND") ||
+    message.includes("NOT_FOUND")
+  ) {
+    return new Error(
+      "Airtable-tabellen «Program ansvar» findes ikke, eller API-nøglen har ikke adgang. Opret tabellen med felterne Program nøgle, Dag, Tid, Titel, Admin email, Admin navn og Note, og giv token skriverettigheder."
+    );
+  }
+  return error;
+}
+
 const PA_KEY_FIELDS = ["Program nøgle", "Program nogle", "ProgramKey", "programKey"];
 const PA_DAG_FIELDS = ["Dag", "A Dag", "dag"];
 const PA_TID_FIELDS = ["Tid", "A Tid", "tid"];
@@ -1836,6 +1920,7 @@ export async function getProgramAnsvarligeRecords(): Promise<ProgramAnsvarligRec
 }
 
 async function fetchProgramAnsvarTableRecords(): Promise<AirtableRecord[]> {
+  const tableId = await resolveProgramAnsvarTableId();
   const apiKey = process.env.AIRTABLE_API_KEY;
   if (!apiKey) {
     throw new Error("AIRTABLE_API_KEY er ikke sat.");
@@ -1843,7 +1928,7 @@ async function fetchProgramAnsvarTableRecords(): Promise<AirtableRecord[]> {
 
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
-  const encodedTable = encodeURIComponent(TABLE_PROGRAM_ANSVAR);
+  const encodedTable = encodeURIComponent(tableId);
 
   do {
     const url = new URL(
@@ -1858,7 +1943,9 @@ async function fetchProgramAnsvarTableRecords(): Promise<AirtableRecord[]> {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Airtable API fejl (${response.status}): ${error}`);
+      throw formatProgramAnsvarAirtableError(
+        new Error(`Airtable API fejl (${response.status}): ${error}`)
+      );
     }
 
     const data: AirtableResponse = await response.json();
@@ -1870,9 +1957,10 @@ async function fetchProgramAnsvarTableRecords(): Promise<AirtableRecord[]> {
 }
 
 async function getProgramAnsvarTableFieldNames(): Promise<Set<string>> {
+  const tableId = await resolveProgramAnsvarTableId();
   const merged = new Set<string>();
   try {
-    const schemaFields = await getTableFieldNames(TABLE_PROGRAM_ANSVAR);
+    const schemaFields = await getTableFieldNames(tableId);
     schemaFields.forEach((name) => merged.add(name));
   } catch {
     // ignore
@@ -1891,12 +1979,13 @@ async function getProgramAnsvarTableFieldNames(): Promise<Set<string>> {
 }
 
 async function deleteProgramAnsvarRecordsByKey(programKey: string): Promise<void> {
+  const tableId = await resolveProgramAnsvarTableId();
   const normalizedKey = programKey.trim().toLowerCase();
   const records = await fetchProgramAnsvarTableRecords();
   for (const record of records) {
     const key = getFieldValue(record, PA_KEY_FIELDS)?.trim().toLowerCase();
     if (key === normalizedKey) {
-      await deleteAirtableRecord(TABLE_PROGRAM_ANSVAR, record.id);
+      await deleteAirtableRecord(tableId, record.id);
     }
   }
 }
@@ -1908,39 +1997,44 @@ export async function replaceProgramAnsvarligeRecords(
   titel: string,
   ansvarlige: { adminEmail: string; adminNavn: string; note: string }[]
 ): Promise<void> {
-  const normalizedKey = programKey.trim().toLowerCase();
-  await deleteProgramAnsvarRecordsByKey(normalizedKey);
+  try {
+    const tableId = await resolveProgramAnsvarTableId();
+    const normalizedKey = programKey.trim().toLowerCase();
+    await deleteProgramAnsvarRecordsByKey(normalizedKey);
 
-  if (ansvarlige.length === 0) return;
+    if (ansvarlige.length === 0) return;
 
-  const fieldNames = await getProgramAnsvarTableFieldNames();
-  const keyField = resolveFieldName(fieldNames, PA_KEY_FIELDS);
-  const dagField = resolveFieldName(fieldNames, PA_DAG_FIELDS);
-  const tidField = resolveFieldName(fieldNames, PA_TID_FIELDS);
-  const titelField = resolveFieldName(fieldNames, PA_TITEL_FIELDS);
-  const emailField = resolveFieldName(fieldNames, PA_EMAIL_FIELDS);
-  const navnField = resolveFieldName(fieldNames, PA_NAVN_FIELDS);
-  const noteField = resolveFieldName(fieldNames, PA_NOTE_FIELDS);
-  const sortField = PA_SORT_FIELDS.find((name) => fieldNames.has(name));
+    const fieldNames = await getProgramAnsvarTableFieldNames();
+    const keyField = resolveFieldName(fieldNames, PA_KEY_FIELDS);
+    const dagField = resolveFieldName(fieldNames, PA_DAG_FIELDS);
+    const tidField = resolveFieldName(fieldNames, PA_TID_FIELDS);
+    const titelField = resolveFieldName(fieldNames, PA_TITEL_FIELDS);
+    const emailField = resolveFieldName(fieldNames, PA_EMAIL_FIELDS);
+    const navnField = resolveFieldName(fieldNames, PA_NAVN_FIELDS);
+    const noteField = resolveFieldName(fieldNames, PA_NOTE_FIELDS);
+    const sortField = PA_SORT_FIELDS.find((name) => fieldNames.has(name));
 
-  for (let index = 0; index < ansvarlige.length; index += 1) {
-    const entry = ansvarlige[index];
-    const adminEmail = entry.adminEmail.trim().toLowerCase();
-    const adminNavn = entry.adminNavn.trim();
-    if (!adminEmail || !adminNavn) continue;
+    for (let index = 0; index < ansvarlige.length; index += 1) {
+      const entry = ansvarlige[index];
+      const adminEmail = entry.adminEmail.trim().toLowerCase();
+      const adminNavn = entry.adminNavn.trim();
+      if (!adminEmail || !adminNavn) continue;
 
-    const payload: Record<string, unknown> = {
-      [keyField]: normalizedKey,
-      [dagField]: dag.trim(),
-      [tidField]: tid?.trim() || "",
-      [titelField]: titel.trim(),
-      [emailField]: adminEmail,
-      [navnField]: adminNavn,
-      [noteField]: entry.note.trim(),
-    };
-    if (sortField) payload[sortField] = index;
+      const payload: Record<string, unknown> = {
+        [keyField]: normalizedKey,
+        [dagField]: dag.trim(),
+        [tidField]: tid?.trim() || "",
+        [titelField]: titel.trim(),
+        [emailField]: adminEmail,
+        [navnField]: adminNavn,
+        [noteField]: entry.note.trim(),
+      };
+      if (sortField) payload[sortField] = index;
 
-    await createAirtableRecord(TABLE_PROGRAM_ANSVAR, payload);
+      await createAirtableRecord(tableId, payload);
+    }
+  } catch (error) {
+    throw formatProgramAnsvarAirtableError(error);
   }
 }
 

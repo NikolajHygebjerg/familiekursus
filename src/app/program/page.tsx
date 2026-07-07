@@ -615,115 +615,119 @@ export default function ProgramPage() {
       </div>
 
       {selectedAnsvarItem && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-800">Ansvarlige</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  {selectedAnsvarItem.dag}
-                  {selectedAnsvarItem.item.tid ? ` · ${formatTid(selectedAnsvarItem.item.tid)}` : ""} ·{" "}
-                  {stripTimeFromTitel(selectedAnsvarItem.item.titel)}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedAnsvarItem(null)}
-                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
-              >
-                Luk
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {ansvarDraft.map((entry, index) => (
-                <div key={index} className="rounded-xl border border-slate-200 p-3">
-                  <label className="block text-xs font-medium text-slate-600">Ansvarlig</label>
-                  <select
-                    value={entry.adminEmail}
-                    onChange={(event) => {
-                      const adminEmail = event.target.value;
-                      const admin = adminUsers.find((user) => user.email === adminEmail);
-                      setAnsvarDraft((prev) =>
-                        prev.map((row, rowIndex) =>
-                          rowIndex === index
-                            ? {
-                                adminEmail,
-                                adminNavn: admin?.navn || "",
-                                note: row.note,
-                              }
-                            : row
-                        )
-                      );
-                    }}
-                    className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
-                  >
-                    <option value="">Vælg admin</option>
-                    {adminUsers.map((admin) => (
-                      <option key={admin.email} value={admin.email}>
-                        {admin.navn}
-                      </option>
-                    ))}
-                  </select>
-
-                  <label className="mt-3 block text-xs font-medium text-slate-600">Note</label>
-                  <input
-                    type="text"
-                    value={entry.note}
-                    onChange={(event) =>
-                      setAnsvarDraft((prev) =>
-                        prev.map((row, rowIndex) =>
-                          rowIndex === index ? { ...row, note: event.target.value } : row
-                        )
-                      )
-                    }
-                    placeholder='Fx "styrer rollerne"'
-                    className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
-                  />
-
-                  {ansvarDraft.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAnsvarDraft((prev) => prev.filter((_, rowIndex) => rowIndex !== index))
-                      }
-                      className="mt-3 text-xs font-medium text-red-700 hover:underline"
-                    >
-                      Fjern ansvarlig
-                    </button>
-                  )}
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="flex max-h-[min(92dvh,100%)] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:rounded-2xl">
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800">Ansvarlige</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {selectedAnsvarItem.dag}
+                    {selectedAnsvarItem.item.tid ? ` · ${formatTid(selectedAnsvarItem.item.tid)}` : ""} ·{" "}
+                    {stripTimeFromTitel(selectedAnsvarItem.item.titel)}
+                  </p>
                 </div>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnsvarItem(null)}
+                  className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
+                >
+                  Luk
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {ansvarDraft.map((entry, index) => (
+                  <div key={index} className="rounded-xl border border-slate-200 p-3">
+                    <label className="block text-xs font-medium text-slate-600">Ansvarlig</label>
+                    <select
+                      value={entry.adminEmail}
+                      onChange={(event) => {
+                        const adminEmail = event.target.value;
+                        const admin = adminUsers.find((user) => user.email === adminEmail);
+                        setAnsvarDraft((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index
+                              ? {
+                                  adminEmail,
+                                  adminNavn: admin?.navn || "",
+                                  note: row.note,
+                                }
+                              : row
+                          )
+                        );
+                      }}
+                      className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <option value="">Vælg admin</option>
+                      {adminUsers.map((admin) => (
+                        <option key={admin.email} value={admin.email}>
+                          {admin.navn}
+                        </option>
+                      ))}
+                    </select>
+
+                    <label className="mt-3 block text-xs font-medium text-slate-600">Note</label>
+                    <input
+                      type="text"
+                      value={entry.note}
+                      onChange={(event) =>
+                        setAnsvarDraft((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, note: event.target.value } : row
+                          )
+                        )
+                      }
+                      placeholder='Fx "styrer rollerne"'
+                      className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                    />
+
+                    {ansvarDraft.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAnsvarDraft((prev) => prev.filter((_, rowIndex) => rowIndex !== index))
+                        }
+                        className="mt-3 text-xs font-medium text-red-700 hover:underline"
+                      >
+                        Fjern ansvarlig
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAnsvarDraft((prev) => [...prev, emptyAnsvarDraft()])}
+                className="mt-4 w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Tilføj ekstra ansvarlig
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setAnsvarDraft((prev) => [...prev, emptyAnsvarDraft()])}
-              className="mt-4 w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Tilføj ekstra ansvarlig
-            </button>
+            <div className="shrink-0 border-t border-slate-100 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              {ansvarError && (
+                <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{ansvarError}</p>
+              )}
 
-            {ansvarError && (
-              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{ansvarError}</p>
-            )}
-
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                disabled={ansvarSaving}
-                onClick={() => void saveAnsvarlige()}
-                className="flex-1 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-              >
-                {ansvarSaving ? "Gemmer..." : "Gem ansvarlige"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedAnsvarItem(null)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Annuller
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={ansvarSaving}
+                  onClick={() => void saveAnsvarlige()}
+                  className="flex-1 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {ansvarSaving ? "Gemmer..." : "Gem ansvarlige"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnsvarItem(null)}
+                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Annuller
+                </button>
+              </div>
             </div>
           </div>
         </div>
