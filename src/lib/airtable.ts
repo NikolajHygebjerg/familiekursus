@@ -1969,6 +1969,28 @@ function getAttachmentUrl(record: AirtableRecord, fieldNames: string[]): string 
   return null;
 }
 
+function slugFromMoedOsPersonName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/ø/g, "o")
+    .replace(/æ/g, "ae")
+    .replace(/å/g, "a")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function resolveMoedOsRecordSlug(record: AirtableRecord): string | null {
+  const slugFromField = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
+  if (slugFromField) return slugFromField;
+
+  const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
+  if (!name) return null;
+
+  const derived = slugFromMoedOsPersonName(name);
+  return derived || null;
+}
+
 function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtableOverride {
   const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
   const imageFromTextRaw = getFieldValue(record, MOED_OS_BILLEDE_URL_FIELDS);
@@ -1988,6 +2010,68 @@ function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtab
   };
 }
 
+async function fetchMoedOsTableRecords(): Promise<AirtableRecord[]> {
+  const apiKey = process.env.AIRTABLE_API_KEY;
+  if (!apiKey) {
+    throw new Error("AIRTABLE_API_KEY er ikke sat. Tilføj den i .env.local eller Vercel miljøvariabler.");
+  }
+
+  const records: AirtableRecord[] = [];
+  let offset: string | undefined;
+  const encodedTable = encodeURIComponent(TABLE_MOED_OS);
+
+  do {
+    const url = new URL(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodedTable}`
+    );
+    if (offset) url.searchParams.set("offset", offset);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Airtable API fejl (${response.status}): ${error}`);
+    }
+
+    const data: AirtableResponse = await response.json();
+    records.push(...data.records);
+    offset = data.offset;
+  } while (offset);
+
+  return records;
+}
+
+async function getMoedOsTableFieldNames(): Promise<Set<string>> {
+  try {
+    const records = await fetchMoedOsTableRecords();
+    const names = new Set<string>();
+    for (const record of records) {
+      for (const key of Object.keys(record.fields)) {
+        names.add(key);
+      }
+    }
+    if (names.size > 0) return names;
+  } catch {
+    // Fortsæt til meta/fallback
+  }
+  return getTableFieldNames(TABLE_MOED_OS);
+}
+
+async function ensureMoedOsRecordSlug(recordId: string, slug: string): Promise<void> {
+  const fieldNames = await getMoedOsTableFieldNames();
+  const slugField = MOED_OS_SLUG_FIELDS.find((name) => fieldNames.has(name));
+  if (!slugField) return;
+
+  await updateAirtableRecord(TABLE_MOED_OS, recordId, {
+    [slugField]: slug,
+  });
+}
+
 export async function getMoedOsAirtableState(
   staticSlugs: ReadonlySet<string>
 ): Promise<MoedOsAirtableState> {
@@ -1996,10 +2080,19 @@ export async function getMoedOsAirtableState(
   const customPeople: MoedOsAirtableOverride[] = [];
 
   try {
-    const records = await fetchTableRecords(TABLE_MOED_OS);
+    const records = await fetchMoedOsTableRecords();
     for (const record of records) {
-      const slug = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
+      const slugFromField = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
+      const slug = resolveMoedOsRecordSlug(record);
       if (!slug) continue;
+
+      if (!slugFromField) {
+        try {
+          await ensureMoedOsRecordSlug(record.id, slug);
+        } catch (error) {
+          console.error("Kunne ikke gemme slug for Mød os-post:", error);
+        }
+      }
 
       if (isMoedOsRecordHidden(record)) {
         hiddenSlugs.add(slug);
@@ -2028,12 +2121,24 @@ export async function getMoedOsAirtableOverrides(): Promise<Map<string, MoedOsAi
   return state.overrides;
 }
 
-async function findMoedOsRecordIdBySlug(slug: string): Promise<string | null> {
+async function findMoedOsRecordIdBySlug(
+  slug: string,
+  name?: string | null
+): Promise<string | null> {
   try {
-    const records = await fetchTableRecords(TABLE_MOED_OS);
+    const records = await fetchMoedOsTableRecords();
+    const normalizedSlug = slug.trim().toLowerCase();
     for (const record of records) {
-      const recordSlug = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
-      if (recordSlug === slug) return record.id;
+      const recordSlug = resolveMoedOsRecordSlug(record);
+      if (recordSlug === normalizedSlug) return record.id;
+    }
+
+    const normalizedName = name?.trim().toLowerCase();
+    if (normalizedName) {
+      for (const record of records) {
+        const recordName = getFieldValue(record, MOED_OS_NAVN_FIELDS)?.trim().toLowerCase();
+        if (recordName === normalizedName) return record.id;
+      }
     }
   } catch {
     // ignore
@@ -2053,9 +2158,9 @@ export async function upsertMoedOsAirtableRecord(
   }
 ): Promise<string> {
   const normalizedSlug = slug.trim().toLowerCase();
-  const existingId = await findMoedOsRecordIdBySlug(normalizedSlug);
+  const existingId = await findMoedOsRecordIdBySlug(normalizedSlug, fields.name);
 
-  const fieldNames = await getTableFieldNames(TABLE_MOED_OS);
+  const fieldNames = await getMoedOsTableFieldNames();
   const slugField = resolveFieldName(fieldNames, MOED_OS_SLUG_FIELDS);
   const navnField = resolveFieldName(fieldNames, MOED_OS_NAVN_FIELDS);
   const billedeField = resolveFieldName(fieldNames, MOED_OS_BILLEDE_FIELDS);

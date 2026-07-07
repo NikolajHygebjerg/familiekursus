@@ -318,19 +318,20 @@ export default function MoedOsPage() {
                   )
                 )}
 
-                {person.canEdit && uploadEnabled && (
+                {person.canEdit && (
                   <label className="mt-2 block">
                     <span className="sr-only">Upload nyt billede for {person.name}</span>
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/gif"
-                      disabled={uploadingSlug === person.slug}
+                      disabled={!uploadEnabled || uploadingSlug === person.slug}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
+                        if (!uploadEnabled) return;
                         if (file) void handleUpload(person.slug, file);
                         e.target.value = "";
                       }}
-                      className="block w-full text-xs text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-amber-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-amber-900"
+                      className="block w-full text-xs text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-amber-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-amber-900 disabled:opacity-50"
                     />
                   </label>
                 )}
