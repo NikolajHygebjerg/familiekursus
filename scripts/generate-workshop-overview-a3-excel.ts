@@ -25,7 +25,7 @@ function loadEnvFile(filePath: string) {
 loadEnvFile(path.join(process.cwd(), ".env.local"));
 
 const OUTPUT_PATH = path.join(process.cwd(), "workshop-oversigt-a3.xlsx");
-const NAME_COLUMNS = 12;
+const COLUMN_GAP = 1;
 
 const WORKSHOP_KEYS = [
   { key: "workshop1" as const, label: "Workshop 1" },
@@ -35,44 +35,20 @@ const WORKSHOP_KEYS = [
   { key: "voksen" as const, label: "Workshop Forældre" },
 ];
 
-interface WorkshopSheetData {
-  sheetTitle: string;
-  displayTitle: string;
-  slotLabel: string;
-  workshopName: string;
+interface WorkshopColumn {
+  name: string;
   firstNames: string[];
+}
+
+interface SlotGroup {
+  label: string;
+  workshops: WorkshopColumn[];
 }
 
 function firstName(fullName: string): string {
   const trimmed = fullName.trim();
   if (!trimmed) return trimmed;
   return trimmed.split(/\s+/)[0];
-}
-
-function sanitizeSheetName(name: string): string {
-  const cleaned = name.replace(/[\\/*?:[\]]/g, " ").trim();
-  return cleaned.length > 31 ? cleaned.slice(0, 31).trim() : cleaned || "Workshop";
-}
-
-function uniqueSheetName(base: string, used: Set<string>): string {
-  let candidate = sanitizeSheetName(base);
-  if (!used.has(candidate)) {
-    used.add(candidate);
-    return candidate;
-  }
-  let i = 2;
-  while (i < 100) {
-    const suffix = ` (${i})`;
-    const trimmed = sanitizeSheetName(base).slice(0, 31 - suffix.length) + suffix;
-    if (!used.has(trimmed)) {
-      used.add(trimmed);
-      return trimmed;
-    }
-    i += 1;
-  }
-  const fallback = `Ark ${used.size + 1}`;
-  used.add(fallback);
-  return fallback;
 }
 
 function a3LandscapePageSetup(sheet: ExcelJS.Worksheet) {
@@ -94,14 +70,36 @@ function a3LandscapePageSetup(sheet: ExcelJS.Worksheet) {
   sheet.headerFooter.oddFooter = "&C&P / &N";
 }
 
-function styleTitleCell(cell: ExcelJS.Cell) {
-  cell.font = { bold: true, size: 18, color: { argb: "FF1E293B" } };
-  cell.alignment = { vertical: "middle", horizontal: "left" };
+function styleSlotHeaderCell(cell: ExcelJS.Cell) {
+  cell.font = { bold: true, size: 12, color: { argb: "FF1E293B" } };
+  cell.alignment = { vertical: "middle", horizontal: "center" };
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFF8FAFC" },
+  };
+  cell.border = {
+    top: { style: "thin", color: { argb: "FFCBD5E1" } },
+    bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+    left: { style: "thin", color: { argb: "FFCBD5E1" } },
+    right: { style: "thin", color: { argb: "FFCBD5E1" } },
+  };
 }
 
-function styleMetaCell(cell: ExcelJS.Cell) {
-  cell.font = { size: 11, color: { argb: "FF475569" } };
-  cell.alignment = { vertical: "middle", horizontal: "left" };
+function styleWorkshopHeaderCell(cell: ExcelJS.Cell) {
+  cell.font = { bold: true, size: 11, color: { argb: "FF0F172A" } };
+  cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFF1F5F9" },
+  };
+  cell.border = {
+    top: { style: "thin", color: { argb: "FFCBD5E1" } },
+    bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+    left: { style: "thin", color: { argb: "FFCBD5E1" } },
+    right: { style: "thin", color: { argb: "FFCBD5E1" } },
+  };
 }
 
 function styleNameCell(cell: ExcelJS.Cell) {
@@ -115,134 +113,88 @@ function styleNameCell(cell: ExcelJS.Cell) {
   };
 }
 
-async function collectWorkshopSheets(): Promise<WorkshopSheetData[]> {
-  const {
-    getWorkshopCounts,
-    getAftengrupperOptionsDetailed,
-    getAftengruppeParticipantsGrouped,
-  } = await import("../src/lib/airtable");
-
-  const sheets: WorkshopSheetData[] = [];
+async function collectSlotGroups(): Promise<SlotGroup[]> {
+  const { getWorkshopCounts } = await import("../src/lib/airtable");
+  const groups: SlotGroup[] = [];
 
   for (const { key, label } of WORKSHOP_KEYS) {
     const counts = await getWorkshopCounts(key, true);
+    const workshops: WorkshopColumn[] = [];
+
     for (const { name, participants } of counts) {
       if (!name.trim()) continue;
       const firstNames = Array.from(
         new Set((participants ?? []).map(firstName).filter(Boolean))
       ).sort((a, b) => a.localeCompare(b, "da"));
-      sheets.push({
-        sheetTitle: `${label} ${name}`,
-        displayTitle: name,
-        slotLabel: label,
-        workshopName: name,
-        firstNames,
+      workshops.push({ name, firstNames });
+    }
+
+    workshops.sort((a, b) => a.name.localeCompare(b.name, "da"));
+    if (workshops.length > 0) {
+      groups.push({ label, workshops });
+    }
+  }
+
+  return groups;
+}
+
+function buildCombinedSheet(workbook: ExcelJS.Workbook, groups: SlotGroup[]) {
+  const sheet = workbook.addWorksheet("Workshops");
+  let col = 1;
+  let maxDataRows = 0;
+  let workshopCount = 0;
+
+  for (const group of groups) {
+    const workshopCountInGroup = group.workshops.length;
+    if (workshopCountInGroup === 0) continue;
+
+    const startCol = col;
+    const endCol = col + workshopCountInGroup - 1;
+
+    sheet.mergeCells(1, startCol, 1, endCol);
+    const slotCell = sheet.getCell(1, startCol);
+    slotCell.value = group.label;
+    styleSlotHeaderCell(slotCell);
+    sheet.getRow(1).height = 24;
+
+    group.workshops.forEach((workshop, index) => {
+      const workshopCol = startCol + index;
+      sheet.getColumn(workshopCol).width = 14;
+
+      const headerCell = sheet.getCell(2, workshopCol);
+      headerCell.value = workshop.name;
+      styleWorkshopHeaderCell(headerCell);
+
+      workshop.firstNames.forEach((name, rowIndex) => {
+        const cell = sheet.getCell(3 + rowIndex, workshopCol);
+        cell.value = name;
+        styleNameCell(cell);
       });
-    }
-  }
 
-  const aftengrupper = await getAftengrupperOptionsDetailed();
-  for (const gruppe of aftengrupper) {
-    if (!gruppe.name.trim()) continue;
-    const families = await getAftengruppeParticipantsGrouped(gruppe.name);
-    const firstNames = Array.from(
-      new Set(
-        families.flatMap((family) => family.members.map((member) => firstName(member.navn))).filter(Boolean)
-      )
-    ).sort((a, b) => a.localeCompare(b, "da"));
-    sheets.push({
-      sheetTitle: `Aftengruppe ${gruppe.name}`,
-      displayTitle: gruppe.name,
-      slotLabel: "Aftengruppe",
-      workshopName: gruppe.name,
-      firstNames,
+      maxDataRows = Math.max(maxDataRows, workshop.firstNames.length);
+      workshopCount += 1;
     });
+
+    col = endCol + 1 + COLUMN_GAP;
   }
 
-  return sheets.sort(
-    (a, b) =>
-      a.slotLabel.localeCompare(b.slotLabel, "da") ||
-      a.workshopName.localeCompare(b.workshopName, "da")
-  );
-}
-
-function buildWorkshopSheet(workbook: ExcelJS.Workbook, sheetName: string, data: WorkshopSheetData) {
-  const sheet = workbook.addWorksheet(sheetName);
-  const totalCols = NAME_COLUMNS;
-
-  for (let c = 1; c <= totalCols; c += 1) {
-    sheet.getColumn(c).width = 11;
+  sheet.getRow(2).height = 22;
+  for (let row = 3; row < 3 + maxDataRows; row += 1) {
+    sheet.getRow(row).height = 18;
   }
 
-  sheet.mergeCells(1, 1, 1, totalCols);
-  const titleCell = sheet.getCell(1, 1);
-  titleCell.value = data.displayTitle;
-  styleTitleCell(titleCell);
-  sheet.getRow(1).height = 28;
-
-  sheet.mergeCells(2, 1, 2, totalCols);
-  const metaCell = sheet.getCell(2, 1);
-  metaCell.value = `${data.slotLabel} · ${data.firstNames.length} deltagere · fornavne`;
-  styleMetaCell(metaCell);
-  sheet.getRow(2).height = 18;
-
-  const startRow = 4;
-  const rowCount = Math.max(1, Math.ceil(data.firstNames.length / totalCols));
-
-  for (let r = 0; r < rowCount; r += 1) {
-    const row = sheet.getRow(startRow + r);
-    row.height = 20;
-    for (let c = 0; c < totalCols; c += 1) {
-      const idx = r * totalCols + c;
-      const cell = row.getCell(c + 1);
-      cell.value = idx < data.firstNames.length ? data.firstNames[idx] : "";
-      styleNameCell(cell);
-    }
-  }
-
-  sheet.views = [{ state: "frozen", ySplit: 3 }];
+  sheet.views = [{ state: "frozen", ySplit: 2, activeCell: "A3" }];
   a3LandscapePageSetup(sheet);
-}
 
-function buildOverviewSheet(workbook: ExcelJS.Workbook, sheets: WorkshopSheetData[]) {
-  const sheet = workbook.addWorksheet("Oversigt", { properties: { tabColor: { argb: "FFF59E0B" } } });
-  sheet.columns = [
-    { width: 22 },
-    { width: 36 },
-    { width: 12 },
-    { width: 18 },
-  ];
-
-  sheet.mergeCells("A1:D1");
-  const title = sheet.getCell("A1");
-  title.value = "Workshopoversigt – Familiekursus 2026";
-  styleTitleCell(title);
-  sheet.getRow(1).height = 28;
-
-  const header = sheet.getRow(3);
-  header.values = ["Tidsrum", "Workshop", "Antal", "Ark"];
-  header.height = 22;
-  header.eachCell((cell) => {
-    cell.font = { bold: true };
-    cell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFF1F5F9" },
-    };
-  });
-
-  sheets.forEach((entry, index) => {
-    const row = sheet.getRow(4 + index);
-    row.values = [entry.slotLabel, entry.workshopName, entry.firstNames.length, entry.sheetTitle];
-    row.height = 18;
-  });
-
-  a3LandscapePageSetup(sheet);
+  return { workshopCount, totalNames: groups.reduce(
+    (sum, group) => sum + group.workshops.reduce((groupSum, workshop) => groupSum + workshop.firstNames.length, 0),
+    0
+  ) };
 }
 
 async function main() {
-  const sheets = await collectWorkshopSheets();
-  if (sheets.length === 0) {
+  const groups = await collectSlotGroups();
+  if (groups.length === 0) {
     throw new Error("Ingen workshops fundet i Airtable.");
   }
 
@@ -250,20 +202,13 @@ async function main() {
   workbook.creator = "Familiekursus";
   workbook.created = new Date();
 
-  buildOverviewSheet(workbook, sheets);
-
-  const usedSheetNames = new Set<string>(["Oversigt"]);
-  for (const data of sheets) {
-    const sheetName = uniqueSheetName(data.sheetTitle, usedSheetNames);
-    buildWorkshopSheet(workbook, sheetName, data);
-  }
+  const { workshopCount, totalNames } = buildCombinedSheet(workbook, groups);
 
   await workbook.xlsx.writeFile(OUTPUT_PATH);
 
-  const totalNames = sheets.reduce((sum, sheet) => sum + sheet.firstNames.length, 0);
   console.log(`Excel oprettet: ${OUTPUT_PATH}`);
-  console.log(`${sheets.length} workshops/aftengrupper, ${totalNames} fornavne i alt.`);
-  console.log("Print: vælg A3, vandret (landskab), ét ark per faneblad.");
+  console.log(`${workshopCount} workshops på ét ark, ${totalNames} fornavne i alt (uden aftengrupper).`);
+  console.log("Print: vælg A3, vandret (landskab).");
 }
 
 main().catch((error) => {
