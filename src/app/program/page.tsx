@@ -682,7 +682,7 @@ export default function ProgramPage() {
                       className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
                     />
 
-                    {ansvarDraft.length > 1 && (
+                    {ansvarDraft.length > 0 && (
                       <button
                         type="button"
                         onClick={() =>
@@ -697,12 +697,18 @@ export default function ProgramPage() {
                 ))}
               </div>
 
+              {ansvarDraft.length === 0 && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Ingen ansvarlige valgt. Gem for at fjerne alle ansvarlige fra programpunktet.
+                </p>
+              )}
+
               <button
                 type="button"
                 onClick={() => setAnsvarDraft((prev) => [...prev, emptyAnsvarDraft()])}
                 className="mt-4 w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Tilføj ekstra ansvarlig
+                {ansvarDraft.length === 0 ? "Tilføj ansvarlig" : "Tilføj ekstra ansvarlig"}
               </button>
             </div>
 
