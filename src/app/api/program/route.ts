@@ -1,12 +1,15 @@
-import { getProgram } from "@/lib/airtable";
+import { getProgram, getWorkshopLocationByName } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const program = await getProgram();
-    return NextResponse.json(program);
+    const [program, workshopLocations] = await Promise.all([
+      getProgram(),
+      getWorkshopLocationByName(),
+    ]);
+    return NextResponse.json({ program, workshopLocations });
   } catch (error) {
     console.error("Program API fejl:", error);
     return NextResponse.json(

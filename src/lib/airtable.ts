@@ -146,7 +146,7 @@ const WORKSHOPBACKEND_UNDERVISER_FIELDS = ["Underviser", "underviser"];
 const WORKSHOPBACKEND_HJAELPERE_FIELDS = ["Hjælpere", "Hjaelpere", "Helpere"];
 const WORKSHOPBACKEND_LOKALE_FIELDS = ["Lokale", "lokale", "Room", "room"];
 
-function normalizeWorkshopName(name: string): string {
+export function normalizeWorkshopName(name: string): string {
   return name
     .replace(/[\u2028\u2029]/g, "")
     .trim()
@@ -812,6 +812,38 @@ export async function getWorkshopOptions(year: number): Promise<Record<string, s
   return result;
 }
 
+export async function getWorkshopLocationByName(): Promise<Record<string, string>> {
+  const locations = new Map<string, string>();
+
+  try {
+    const records = await fetchTableRecords(TABLE_WORKSHOPOVERSIGT);
+    const slotKeys = Object.keys(WORKSHOPOVERSIGT_OPTION_FIELDS) as (keyof typeof WORKSHOPOVERSIGT_OPTION_FIELDS)[];
+
+    for (const rec of records) {
+      for (const key of slotKeys) {
+        const names = getWorkshopValues(rec, WORKSHOPOVERSIGT_OPTION_FIELDS[key]);
+        if (names.length === 0) continue;
+
+        const lokation =
+          getFieldValue(rec, WORKSHOPOVERSIGT_LOKATION_FIELDS[key] || []) ||
+          getFieldValue(rec, WORKSHOPOVERSIGT_GENERIC_LOKATION_FIELDS);
+
+        if (!lokation?.trim()) continue;
+
+        for (const name of names) {
+          const trimmed = name.trim();
+          if (!trimmed) continue;
+          locations.set(normalizeWorkshopName(trimmed), lokation.trim());
+        }
+      }
+    }
+  } catch {
+    // Workshopoversigt kan mangle
+  }
+
+  return Object.fromEntries(locations);
+}
+
 // Årstabel: feltnavne – debug viser Aftengrupper (uden A), prøv Gyserløb/Sheltertur uden A
 const ACTIVITY_FIELD_OPTIONS: Record<string, string[]> = {
   aftengrupper: ["Aftengrupper", "A Aftengrupper"],
@@ -819,6 +851,20 @@ const ACTIVITY_FIELD_OPTIONS: Record<string, string[]> = {
   sheltertur: ["Sheltertur", "A Sheltertur"],
 };
 const WORKSHOPOVERSIGT_MAX_FIELDS = ["# Max", "Max", "A Max"];
+const WORKSHOPOVERSIGT_LOKATION_FIELDS: Record<string, string[]> = {
+  workshop1: ["Lokation Workshop 1", "A Lokation Workshop 1", "Lokation 1", "A Lokation 1"],
+  workshop2: ["Lokation Workshop 2", "A Lokation Workshop 2", "Lokation 2", "A Lokation 2"],
+  workshop3: ["Lokation Workshop 3", "A Lokation Workshop 3", "Lokation 3", "A Lokation 3"],
+  workshop4: ["Lokation Workshop 4", "A Lokation Workshop 4", "Lokation 4", "A Lokation 4"],
+  voksen: [
+    "Lokation Forældreworkshop",
+    "A Lokation Forældreworkshop",
+    "Lokation Workshop Forældre",
+    "A Lokation Workshop Forældre",
+    "Lokation forældre",
+  ],
+};
+const WORKSHOPOVERSIGT_GENERIC_LOKATION_FIELDS = ["Lokation", "A Lokation", "lokation"];
 
 function resolveFieldName(allFieldNames: Set<string>, possibleNames: string[]): string {
   for (const name of possibleNames) {
@@ -1456,6 +1502,7 @@ type WorkshopSlot = "workshop1" | "workshop2" | "workshop3" | "workshop4" | "vok
 export interface ProgramItemFromAirtable {
   tid?: string;
   titel: string;
+  lokation?: string;
   workshopSlot?: WorkshopSlot;
   workshops?: string[];
   aldersgrupperItem?: boolean;
@@ -1472,6 +1519,7 @@ const PROGRAM_DATO_FIELDS = ["A Dato", "Dato", "dato"];
 const PROGRAM_TID_FIELDS = ["A Tid", "Tid", "tid"];
 const PROGRAM_TITEL_FIELDS = ["A Titel", "Titel", "titel"];
 const PROGRAM_WORKSHOP_FIELDS = ["A Workshop", "Workshop", "workshop"];
+const PROGRAM_LOKATION_FIELDS = ["Lokation", "A Lokation", "lokation", "Location", "location"];
 
 function getFieldValueFromRecord(rec: AirtableRecord, possibleNames: string[]): string | null {
   for (const name of possibleNames) {
@@ -1588,6 +1636,7 @@ export async function getProgram(): Promise<DagProgramFromAirtable[]> {
         titel: isAldersgrupperProgramTitel(cleanTitel || titel)
           ? stripStjerneloebFromTitel(cleanTitel || titel)
           : cleanTitel || titel,
+        lokation: getFieldValueFromRecord(rec, PROGRAM_LOKATION_FIELDS) || undefined,
         workshopSlot: slot,
         workshops: workshops?.length ? workshops : undefined,
         aldersgrupperItem: isAldersgrupperProgramTitel(cleanTitel || titel) || undefined,
@@ -1640,6 +1689,7 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
       result.push({
         tid: `${currTid}-${next.tid}`,
         titel: next.titel,
+        lokation: next.lokation || curr.lokation,
         workshopSlot: next.workshopSlot,
         workshops: next.workshops,
         aldersgrupperItem: next.aldersgrupperItem || curr.aldersgrupperItem,
@@ -1657,6 +1707,7 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
       result.push({
         tid: `${currTid}-${next.tid}`,
         titel: curr.titel,
+        lokation: curr.lokation || next.lokation,
         workshopSlot: curr.workshopSlot || next.workshopSlot,
         workshops: curr.workshops || next.workshops,
         aldersgrupperItem: curr.aldersgrupperItem || next.aldersgrupperItem,

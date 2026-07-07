@@ -5,6 +5,7 @@
 export interface ProgramItem {
   tid?: string;
   titel: string;
+  lokation?: string;
   beskrivelse?: string;
   workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur";
   aldersgrupperItem?: boolean;

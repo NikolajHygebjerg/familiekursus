@@ -12,11 +12,13 @@ import {
   type ProgramAnsvarDraft,
   type ProgramAnsvarlig,
 } from "@/lib/program-ansvar";
+import { appendLokationToText, lookupWorkshopLokation } from "@/lib/program-display";
 
 const WORKSHOPOVERSIGT_SLOTS = ["aftengrupper", "gyserløb", "sheltertur"] as const;
 
 interface ProgramItemWithWorkshops extends Omit<ProgramItem, "workshopSlot"> {
   workshops?: string[];
+  lokation?: string;
   workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur";
   aldersgrupperItem?: boolean;
 }
@@ -62,16 +64,40 @@ function stripTimeFromTitel(titel: string): string {
   return result;
 }
 
+function LokationSuffix({ lokation }: { lokation: string }) {
+  return <span className="font-normal text-slate-500"> ({lokation})</span>;
+}
+
+function NameWithLokation({
+  name,
+  lokation,
+  className,
+}: {
+  name: string;
+  lokation?: string | null;
+  className?: string;
+}) {
+  const location = lokation?.trim();
+  return (
+    <span className={className}>
+      {name}
+      {location ? <LokationSuffix lokation={location} /> : null}
+    </span>
+  );
+}
+
 function ProgramListItem({
   item,
   ansvarLines,
   canManageAnsvarlige,
   onManageAnsvarlige,
+  workshopLocations,
 }: {
   item: ProgramItemWithWorkshops;
   ansvarLines?: string[];
   canManageAnsvarlige?: boolean;
   onManageAnsvarlige?: () => void;
+  workshopLocations: Record<string, string>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasWorkshops = item.workshops && item.workshops.length > 0;
@@ -90,13 +116,21 @@ function ProgramListItem({
 
   const displayTitel = item.tid ? stripTimeFromTitel(item.titel) : item.titel;
 
+  const titledContent = (
+    <NameWithLokation
+      name={displayTitel}
+      lokation={item.lokation}
+      className="font-medium text-slate-800"
+    />
+  );
+
   const titleContent = linksToTilmeld ? (
     <Link
       href="/tilmeld"
       className="font-medium text-amber-700 hover:underline"
       onClick={(event) => event.stopPropagation()}
     >
-      {displayTitel}
+      <NameWithLokation name={displayTitel} lokation={item.lokation} />
     </Link>
   ) : isExpandable ? (
     <button
@@ -107,13 +141,13 @@ function ProgramListItem({
       }}
       className="inline-flex items-center gap-1.5 text-left"
     >
-      <span className="font-medium text-slate-800">{displayTitel}</span>
+      {titledContent}
       <span className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}>
         <ArrowIcon />
       </span>
     </button>
   ) : (
-    <span className="font-medium text-slate-800">{displayTitel}</span>
+    titledContent
   );
 
   const content = (
@@ -149,7 +183,11 @@ function ProgramListItem({
             <ul className="mt-3 space-y-1.5 border-t border-slate-200 pt-3">
               {item.workshops!.map((ws, i) => (
                 <li key={i} className="text-sm text-slate-600">
-                  • {ws}
+                  •{" "}
+                  <NameWithLokation
+                    name={ws}
+                    lokation={lookupWorkshopLokation(ws, workshopLocations)}
+                  />
                 </li>
               ))}
             </ul>
@@ -185,6 +223,7 @@ export default function ProgramPage() {
   const [selectedDag, setSelectedDag] = useState(0);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [programData, setProgramData] = useState<DagProgramWithWorkshops[] | null>(null);
+  const [workshopLocations, setWorkshopLocations] = useState<Record<string, string>>({});
   const [programLoading, setProgramLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string } | null>(null);
@@ -226,10 +265,25 @@ export default function ProgramPage() {
   useEffect(() => {
     setProgramLoading(true);
     fetch("/api/program")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => (Array.isArray(data) && data.length > 0 ? data : null))
-      .then(setProgramData)
-      .catch(() => setProgramData(null))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setProgramData(data.length > 0 ? data : null);
+          setWorkshopLocations({});
+          return;
+        }
+        const program = Array.isArray(data?.program) ? data.program : [];
+        setProgramData(program.length > 0 ? program : null);
+        setWorkshopLocations(
+          data?.workshopLocations && typeof data.workshopLocations === "object"
+            ? data.workshopLocations
+            : {}
+        );
+      })
+      .catch(() => {
+        setProgramData(null);
+        setWorkshopLocations({});
+      })
       .finally(() => setProgramLoading(false));
   }, []);
 
@@ -275,6 +329,12 @@ export default function ProgramPage() {
   }, [familyToLoad]);
 
   const baseProgram = appendVoksencafeProgram(programData ?? UGEPROGRAM);
+
+  const formatWorkshopLabel = useCallback(
+    (workshopName: string) =>
+      appendLokationToText(workshopName, lookupWorkshopLokation(workshopName, workshopLocations)),
+    [workshopLocations]
+  );
 
   const dagMedFamilieWorkshops = useMemo((): DagProgramWithWorkshops[] => {
     return baseProgram.map((dag) => ({
@@ -345,7 +405,7 @@ export default function ProgramPage() {
         }
 
         const workshopLines = Array.from(grouped.entries())
-          .map(([ws, navne]) => `${ws}: ${navne.join(", ")}`)
+          .map(([ws, navne]) => `${formatWorkshopLabel(ws)}: ${navne.join(", ")}`)
           .join("\n");
 
         const familyWorkshopNames = Array.from(grouped.keys());
@@ -357,7 +417,7 @@ export default function ProgramPage() {
         };
       }),
     }));
-  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse]);
+  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse, formatWorkshopLabel]);
 
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;
@@ -427,6 +487,7 @@ export default function ProgramPage() {
           ansvarLines={getAnsvarLines(dag, item)}
           canManageAnsvarlige={isSuperAdmin}
           onManageAnsvarlige={isSuperAdmin ? () => openAnsvarEditor(dag, item) : undefined}
+          workshopLocations={workshopLocations}
         />
       </li>
     );
