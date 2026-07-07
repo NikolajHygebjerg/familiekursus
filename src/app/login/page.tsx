@@ -5,6 +5,36 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
 type Step = "email" | "code" | "create" | "setCode" | "glemtKode";
+
+type AuthResult = {
+  email: string;
+  familyName: string | null;
+  isAdmin?: boolean;
+  adminNavn?: string | null;
+  needsWorkshopRegistration?: boolean;
+};
+
+function postLoginPath(data: AuthResult): string {
+  return data.isAdmin || !data.needsWorkshopRegistration ? "/program" : "/workshop-tilmelding";
+}
+
+function applyAuthAndRedirect(
+  data: AuthResult,
+  setAuth: ReturnType<typeof useAuth>["setAuth"],
+  router: ReturnType<typeof useRouter>,
+  rememberEmail: (email: string) => void
+) {
+  setAuth(
+    data.email,
+    data.familyName,
+    data.needsWorkshopRegistration ?? false,
+    Boolean(data.isAdmin),
+    data.adminNavn ?? null
+  );
+  rememberEmail(data.email);
+  router.replace(postLoginPath(data));
+}
+
 const LOGIN_EMAIL_HISTORY_KEY = "familiekursus_login_email_history";
 const MAX_HISTORY = 12;
 
@@ -34,6 +64,7 @@ export default function LoginPage() {
     nextStep: "code" | "setCode" | "create";
     familyName: string | null;
     needsWorkshopRegistration: boolean;
+    isAdmin?: boolean;
   } | null>(null);
 
   const rememberEmail = useCallback((value: string) => {
@@ -92,9 +123,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Forkert kode eller email");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration, data.isAdmin, data.adminNavn ?? null);
-      rememberEmail(e);
-      router.replace("/program");
+      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fejlede");
     } finally {
@@ -118,9 +147,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke oprette bruger");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin, data.adminNavn ?? null);
-      rememberEmail(e);
-      router.replace("/program");
+      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Oprettelse fejlede");
     } finally {
@@ -144,9 +171,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke nulstille kode");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin, data.adminNavn ?? null);
-      rememberEmail(e);
-      router.replace("/program");
+      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke nulstille kode");
     } finally {
@@ -170,9 +195,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke gemme kode");
-      setAuth(data.email, data.familyName, data.needsWorkshopRegistration ?? false, data.isAdmin, data.adminNavn ?? null);
-      rememberEmail(e);
-      router.replace("/program");
+      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke gemme kode");
     } finally {

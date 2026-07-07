@@ -73,16 +73,18 @@ export async function POST(request: Request) {
           needsSetCode: false,
           nextStep: "code" as const,
           familyName,
+          isAdmin,
           needsWorkshopRegistration: needsReg,
         });
       }
       if (needsSetCode) {
         return NextResponse.json({
           existsIn2026,
-          hasBruger: false,
+          hasBruger: brugerExists,
           needsSetCode: true,
           nextStep: "setCode" as const,
           familyName,
+          isAdmin,
           needsWorkshopRegistration: needsReg,
         });
       }
@@ -92,7 +94,8 @@ export async function POST(request: Request) {
         needsSetCode: true,
         nextStep: "create" as const,
         familyName,
-        needsWorkshopRegistration: true,
+        isAdmin,
+        needsWorkshopRegistration: isAdmin ? false : true,
       });
     }
 
@@ -149,17 +152,17 @@ export async function POST(request: Request) {
         await updateAirtableRecord(TABLE_BRUGERE, bruger.recordId, {
           [BRUGERE_KODE_FIELDS[0]]: code,
         });
-      } else {
-        await createAirtableRecord(TABLE_BRUGERE, {
-          [BRUGERE_EMAIL_FIELDS[0]]: email,
-          [BRUGERE_KODE_FIELDS[0]]: code,
-          [BRUGERE_STATUS_FIELD]: "Bruger",
-        });
+        return NextResponse.json(
+          await buildAuthResponse(email, bruger.isAdmin, bruger.adminNavn)
+        );
       }
-      const updated = await getBrugerByEmail(email);
-      return NextResponse.json(
-        await buildAuthResponse(email, updated?.isAdmin ?? false, updated?.adminNavn ?? null)
-      );
+
+      await createAirtableRecord(TABLE_BRUGERE, {
+        [BRUGERE_EMAIL_FIELDS[0]]: email,
+        [BRUGERE_KODE_FIELDS[0]]: code,
+        [BRUGERE_STATUS_FIELD]: "Bruger",
+      });
+      return NextResponse.json(await buildAuthResponse(email, false));
     }
 
     if (action === "login") {

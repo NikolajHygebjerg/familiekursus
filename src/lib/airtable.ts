@@ -621,7 +621,8 @@ export interface BrugerInfo {
 }
 
 function isAdminBrugerstatus(raw: string | null): boolean {
-  return raw?.trim().toLowerCase() === "admin";
+  const value = raw?.trim().toLowerCase();
+  return value === "admin" || value === "kursusleder";
 }
 
 export async function getBrugerByEmail(email: string): Promise<BrugerInfo | null> {
