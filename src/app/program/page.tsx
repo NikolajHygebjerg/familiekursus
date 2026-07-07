@@ -12,13 +12,19 @@ import {
   type ProgramAnsvarDraft,
   type ProgramAnsvarlig,
 } from "@/lib/program-ansvar";
-import { appendLokationToText, lookupWorkshopLokation } from "@/lib/program-display";
+import { lookupWorkshopLokation } from "@/lib/program-display";
 
 const WORKSHOPOVERSIGT_SLOTS = ["aftengrupper", "gyserløb", "sheltertur"] as const;
+
+interface WorkshopDeltagerLinje {
+  workshop: string;
+  navne: string[];
+}
 
 interface ProgramItemWithWorkshops extends Omit<ProgramItem, "workshopSlot"> {
   workshops?: string[];
   lokation?: string;
+  workshopDeltagerLinjer?: WorkshopDeltagerLinje[];
   workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur";
   aldersgrupperItem?: boolean;
 }
@@ -106,7 +112,7 @@ function ProgramListItem({
     item.workshopSlot === "aftengrupper" ||
     item.workshopSlot === "sheltertur" ||
     item.workshopSlot === "gyserløb";
-  const showParticipants = !!item.beskrivelse;
+  const showParticipants = !!item.beskrivelse || !!item.workshopDeltagerLinjer?.length;
 
   const ArrowIcon = () => (
     <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -174,7 +180,20 @@ function ProgramListItem({
               ))}
             </div>
           )}
-          {showParticipants && (
+          {item.workshopDeltagerLinjer && item.workshopDeltagerLinjer.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {item.workshopDeltagerLinjer.map((line, index) => (
+                <p key={`${line.workshop}-${index}`} className="text-sm text-slate-600">
+                  <NameWithLokation
+                    name={line.workshop}
+                    lokation={lookupWorkshopLokation(line.workshop, workshopLocations)}
+                  />
+                  : {line.navne.join(", ")}
+                </p>
+              ))}
+            </div>
+          )}
+          {item.beskrivelse && (
             <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
               {item.beskrivelse}
             </pre>
@@ -330,12 +349,6 @@ export default function ProgramPage() {
 
   const baseProgram = appendVoksencafeProgram(programData ?? UGEPROGRAM);
 
-  const formatWorkshopLabel = useCallback(
-    (workshopName: string) =>
-      appendLokationToText(workshopName, lookupWorkshopLokation(workshopName, workshopLocations)),
-    [workshopLocations]
-  );
-
   const dagMedFamilieWorkshops = useMemo((): DagProgramWithWorkshops[] => {
     return baseProgram.map((dag) => ({
       ...dag,
@@ -404,20 +417,22 @@ export default function ProgramPage() {
           }
         }
 
-        const workshopLines = Array.from(grouped.entries())
-          .map(([ws, navne]) => `${formatWorkshopLabel(ws)}: ${navne.join(", ")}`)
-          .join("\n");
+        const workshopDeltagerLinjer = Array.from(grouped.entries()).map(([ws, navne]) => ({
+          workshop: ws,
+          navne,
+        }));
 
         const familyWorkshopNames = Array.from(grouped.keys());
 
         return {
           ...item,
           workshops: familyWorkshopNames.length > 0 ? familyWorkshopNames : undefined,
-          beskrivelse: workshopLines || undefined,
+          workshopDeltagerLinjer: workshopDeltagerLinjer.length > 0 ? workshopDeltagerLinjer : undefined,
+          beskrivelse: undefined,
         };
       }),
     }));
-  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse, formatWorkshopLabel]);
+  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse]);
 
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;

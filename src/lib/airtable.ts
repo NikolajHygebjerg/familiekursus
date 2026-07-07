@@ -144,7 +144,14 @@ export interface WorkshopBackendInfo {
 const WORKSHOPBACKEND_NAME_FIELDS = ["Workshop", "workshop", "Navn", "navn"];
 const WORKSHOPBACKEND_UNDERVISER_FIELDS = ["Underviser", "underviser"];
 const WORKSHOPBACKEND_HJAELPERE_FIELDS = ["Hjælpere", "Hjaelpere", "Helpere"];
-const WORKSHOPBACKEND_LOKALE_FIELDS = ["Lokale", "lokale", "Room", "room"];
+const WORKSHOPBACKEND_LOKALE_FIELDS = [
+  "Lokale",
+  "lokale",
+  "Lokation",
+  "lokation",
+  "Room",
+  "room",
+];
 
 export function normalizeWorkshopName(name: string): string {
   return name
@@ -812,8 +819,19 @@ export async function getWorkshopOptions(year: number): Promise<Record<string, s
   return result;
 }
 
+function getWorkshopSlotLokation(
+  rec: AirtableRecord,
+  slotKey: keyof typeof WORKSHOPOVERSIGT_OPTION_FIELDS
+): string | null {
+  return (
+    getFieldValue(rec, WORKSHOPOVERSIGT_LOKATION_FIELDS[slotKey] || []) ||
+    getFieldValue(rec, WORKSHOPOVERSIGT_GENERIC_LOKATION_FIELDS)
+  );
+}
+
 export async function getWorkshopLocationByName(): Promise<Record<string, string>> {
   const locations = new Map<string, string>();
+  const slotLocations = new Map<string, string>();
 
   try {
     const records = await fetchTableRecords(TABLE_WORKSHOPOVERSIGT);
@@ -821,13 +839,19 @@ export async function getWorkshopLocationByName(): Promise<Record<string, string
 
     for (const rec of records) {
       for (const key of slotKeys) {
+        const lokation = getWorkshopSlotLokation(rec, key);
+        if (lokation?.trim() && !slotLocations.has(key)) {
+          slotLocations.set(key, lokation.trim());
+        }
+      }
+    }
+
+    for (const rec of records) {
+      for (const key of slotKeys) {
         const names = getWorkshopValues(rec, WORKSHOPOVERSIGT_OPTION_FIELDS[key]);
         if (names.length === 0) continue;
 
-        const lokation =
-          getFieldValue(rec, WORKSHOPOVERSIGT_LOKATION_FIELDS[key] || []) ||
-          getFieldValue(rec, WORKSHOPOVERSIGT_GENERIC_LOKATION_FIELDS);
-
+        const lokation = getWorkshopSlotLokation(rec, key) || slotLocations.get(key);
         if (!lokation?.trim()) continue;
 
         for (const name of names) {
@@ -839,6 +863,22 @@ export async function getWorkshopLocationByName(): Promise<Record<string, string
     }
   } catch {
     // Workshopoversigt kan mangle
+  }
+
+  try {
+    const records = await fetchTableRecords(TABLE_WORKSHOPBACKEND);
+    for (const record of records) {
+      const parsed = readWorkshopBackendRecord(record);
+      if (!parsed) continue;
+      const lokation = parsed.info.lokale?.trim();
+      if (!lokation) continue;
+      const key = normalizeWorkshopName(parsed.workshopName);
+      if (!locations.has(key)) {
+        locations.set(key, lokation);
+      }
+    }
+  } catch {
+    // Workshopbackend kan mangle
   }
 
   return Object.fromEntries(locations);
