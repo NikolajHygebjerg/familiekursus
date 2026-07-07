@@ -8,7 +8,7 @@ import type { MoedOsPersonView } from "@/lib/moed-os";
 
 export default function MoedOsPage() {
   const { email, isAdmin, adminNavn } = useAuth();
-  const [title, setTitle] = useState("");
+  const [pageDescription, setPageDescription] = useState("");
   const [people, setPeople] = useState<MoedOsPersonView[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [uploadEnabled, setUploadEnabled] = useState(false);
@@ -16,6 +16,7 @@ export default function MoedOsPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusBySlug, setStatusBySlug] = useState<Record<string, string>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [uploadingSlug, setUploadingSlug] = useState<string | null>(null);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonSlug, setNewPersonSlug] = useState("");
@@ -35,12 +36,15 @@ export default function MoedOsPage() {
       })
       .then((data) => {
         const list: MoedOsPersonView[] = Array.isArray(data?.people) ? data.people : [];
-        setTitle(data?.title || "");
+        setPageDescription(data?.title || "");
         setPeople(list);
         setIsSuperAdmin(Boolean(data?.isSuperAdmin));
         setUploadEnabled(Boolean(data?.uploadEnabled));
         setNameDrafts(
           Object.fromEntries(list.map((person) => [person.slug, person.name]))
+        );
+        setTitleDrafts(
+          Object.fromEntries(list.map((person) => [person.slug, person.title ?? ""]))
         );
       })
       .catch((err) => setError(err.message))
@@ -112,6 +116,33 @@ export default function MoedOsPage() {
     }
   }
 
+  async function handleTitleSave(slug: string) {
+    if (!email) return;
+    const personTitle = titleDrafts[slug]?.trim() ?? "";
+
+    setStatusBySlug((prev) => ({ ...prev, [slug]: "" }));
+    try {
+      const res = await fetch("/api/moed-os", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, slug, title: personTitle }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setPeople((prev) =>
+        prev.map((person) =>
+          person.slug === slug ? { ...person, title: personTitle || null } : person
+        )
+      );
+      setStatusBySlug((prev) => ({ ...prev, [slug]: "Titel opdateret" }));
+    } catch (err) {
+      setStatusBySlug((prev) => ({
+        ...prev,
+        [slug]: err instanceof Error ? err.message : "Kunne ikke gemme titel",
+      }));
+    }
+  }
+
   async function handleDelete(slug: string, name: string) {
     if (!email || !isSuperAdmin) return;
     if (!window.confirm(`Slet ${name} fra Mød os?`)) return;
@@ -170,7 +201,7 @@ export default function MoedOsPage() {
     <main className="mx-auto max-w-2xl px-4 py-6">
       <header className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-slate-800">Mød os</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">{title}</p>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">{pageDescription}</p>
         {isAdmin && !uploadEnabled && (
           <p className="mt-3 text-xs text-amber-700">
             Billede-upload kræver forbundet Vercel Blob under Settings → Storage. Redeploy efter opsætning.
@@ -262,6 +293,31 @@ export default function MoedOsPage() {
                   <p className="text-center text-sm font-semibold text-slate-800">{person.name}</p>
                 )}
 
+                {person.canEdit ? (
+                  <div className="mt-1 space-y-1">
+                    <input
+                      type="text"
+                      value={titleDrafts[person.slug] ?? person.title ?? ""}
+                      onChange={(e) =>
+                        setTitleDrafts((prev) => ({ ...prev, [person.slug]: e.target.value }))
+                      }
+                      placeholder="Titel (fx Kursusleder)"
+                      className="w-full rounded border border-slate-200 px-2 py-1 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleTitleSave(person.slug)}
+                      className="w-full rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                    >
+                      Gem titel
+                    </button>
+                  </div>
+                ) : (
+                  person.title && (
+                    <p className="mt-1 text-center text-xs text-slate-500">{person.title}</p>
+                  )
+                )}
+
                 {person.canEdit && uploadEnabled && (
                   <label className="mt-2 block">
                     <span className="sr-only">Upload nyt billede for {person.name}</span>
@@ -314,7 +370,8 @@ export default function MoedOsPage() {
 
       {isAdmin && !isSuperAdmin && adminNavn && (
         <p className="mt-6 text-center text-xs text-slate-500">
-          Du kan uploade billede for din egen profil (matcher «{adminNavn}» i Brugere-tabellen).
+          Du kan uploade billede og skrive titel for din egen profil (matcher «{adminNavn}» i
+          Brugere-tabellen).
         </p>
       )}
     </main>

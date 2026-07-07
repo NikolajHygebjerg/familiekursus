@@ -7,6 +7,7 @@ export const MOED_OS_PLACEHOLDER_IMAGE = "/images/moed-os/placeholder.svg";
 export interface MoedOsPersonView {
   slug: string;
   name: string;
+  title: string | null;
   image: string;
   recordId: string | null;
   canEdit: boolean;
@@ -71,6 +72,7 @@ function buildPersonView(
   person: {
     slug: string;
     name: string;
+    title: string | null;
     image: string;
     recordId: string | null;
     linkedEmail: string | null;
@@ -89,6 +91,7 @@ function buildPersonView(
   return {
     slug: person.slug,
     name: person.name,
+    title: person.title?.trim() || null,
     image: person.image || MOED_OS_PLACEHOLDER_IMAGE,
     recordId: person.recordId,
     isCustom: person.isCustom,
@@ -117,6 +120,7 @@ export function buildMoedOsPersonViews(
         {
           slug,
           name: override?.name ?? person.name,
+          title: override?.title ?? null,
           image: override?.image?.trim() ? override.image : person.image,
           recordId: override?.recordId ?? null,
           linkedEmail: override?.linkedEmail ?? null,
@@ -136,6 +140,7 @@ export function buildMoedOsPersonViews(
         {
           slug: custom.slug,
           name: custom.name,
+          title: custom.title ?? null,
           image: custom.image,
           recordId: custom.recordId,
           linkedEmail: custom.linkedEmail,

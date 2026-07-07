@@ -1924,12 +1924,14 @@ const MOED_OS_NAVN_FIELDS = ["Navn", "Name", "navn", "name"];
 const MOED_OS_BILLEDE_FIELDS = ["Billede", "Photo", "Image", "billede"];
 const MOED_OS_BILLEDE_URL_FIELDS = ["Billede URL", "Billede sti", "Image URL", "billedeUrl"];
 const MOED_OS_EMAIL_FIELDS = ["Email", "A Email", "email"];
+const MOED_OS_TITEL_FIELDS = ["Titel", "A Titel", "titel", "Title", "title", "Rolle", "role"];
 
 const MOED_OS_SKJULT_FIELDS = ["Skjult", "Hidden", "skjult", "Slettet"];
 
 export interface MoedOsAirtableOverride {
   slug: string;
   name: string;
+  title: string | null;
   image: string;
   recordId: string;
   linkedEmail: string | null;
@@ -1979,6 +1981,7 @@ function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtab
   return {
     slug,
     name: name || slug,
+    title: getFieldValue(record, MOED_OS_TITEL_FIELDS),
     image,
     recordId: record.id,
     linkedEmail: getFieldValue(record, MOED_OS_EMAIL_FIELDS),
@@ -2042,6 +2045,7 @@ export async function upsertMoedOsAirtableRecord(
   slug: string,
   fields: {
     name?: string;
+    title?: string | null;
     imageUrl?: string;
     blobPathname?: string;
     linkedEmail?: string | null;
@@ -2062,6 +2066,11 @@ export async function upsertMoedOsAirtableRecord(
     [slugField]: normalizedSlug,
   };
   if (fields.name?.trim()) payload[navnField] = fields.name.trim();
+
+  const titelField = MOED_OS_TITEL_FIELDS.find((name) => fieldNames.has(name));
+  if (fields.title !== undefined && titelField) {
+    payload[titelField] = fields.title?.trim() || "";
+  }
 
   const storedImageRef = fields.blobPathname?.trim() || fields.imageUrl?.trim();
   if (storedImageRef) {
