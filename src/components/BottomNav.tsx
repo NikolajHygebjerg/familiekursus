@@ -19,7 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/sange", label: "Sange", icon: "songs" },
   { href: "/evaluering", label: "Evaluering", icon: "evaluation" },
   { href: "/tilmeldte", label: "Dine workshops", icon: "myWorkshops" },
-  { href: "/", label: "Workshops", icon: "workshops" },
+  { href: "/", label: "Workshops", icon: "workshops", adminOnly: true },
   { href: "/tilmeld", label: "Tilmeld", icon: "register", userOnly: true },
   { href: "/familieloeb", label: "Familieløbet", icon: "race", adminOnly: true },
 ];
