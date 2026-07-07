@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
-import { UGEPROGRAM, type ProgramItem } from "@/data/program";
+import { UGEPROGRAM, appendVoksencafeProgram, type ProgramItem } from "@/data/program";
 
 const WORKSHOPOVERSIGT_SLOTS = ["aftengrupper", "gyserløb", "sheltertur"] as const;
 
@@ -206,7 +206,7 @@ export default function ProgramPage() {
       .catch(() => setAldersgruppeBeskrivelse(null));
   }, [familyToLoad]);
 
-  const baseProgram = programData ?? UGEPROGRAM;
+  const baseProgram = appendVoksencafeProgram(programData ?? UGEPROGRAM);
 
   const dagMedFamilieWorkshops = useMemo((): DagProgramWithWorkshops[] => {
     return baseProgram.map((dag) => ({

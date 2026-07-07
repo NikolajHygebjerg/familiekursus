@@ -1,3 +1,4 @@
+import { appendVoksencafeProgram } from "@/data/program";
 import { normalizeMoedOsStoredImage, toAbsoluteMoedOsImageUrl } from "@/lib/blob-config";
 
 const AIRTABLE_BASE_ID = "appWYXnvNcnZS3yPu";
@@ -1609,7 +1610,7 @@ export async function getProgram(): Promise<DagProgramFromAirtable[]> {
     }
   }
 
-  return result;
+  return appendVoksencafeProgram(result);
 }
 
 function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFromAirtable[] {
