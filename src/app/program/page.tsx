@@ -135,7 +135,6 @@ export default function ProgramPage() {
   const [programData, setProgramData] = useState<DagProgramWithWorkshops[] | null>(null);
   const [programLoading, setProgramLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
-  const [workshopoversigt, setWorkshopoversigt] = useState<Record<string, string[]>>({});
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string } | null>(null);
   const [aldersgruppeBeskrivelse, setAldersgruppeBeskrivelse] = useState<string | null>(null);
 
@@ -149,20 +148,6 @@ export default function ProgramPage() {
       .then(setProgramData)
       .catch(() => setProgramData(null))
       .finally(() => setProgramLoading(false));
-  }, []);
-
-  useEffect(() => {
-       Promise.all(
-      WORKSHOPOVERSIGT_SLOTS.map((field) =>
-        fetch(`/api/workshopoversigt?field=${encodeURIComponent(field)}`)
-          .then((res) => (res.ok ? res.json() : []))
-          .then((names: string[]) => ({ field, names }))
-      )
-    ).then((results) => {
-      const map: Record<string, string[]> = {};
-      for (const { field, names } of results) map[field] = names;
-      setWorkshopoversigt(map);
-    });
   }, []);
 
   useEffect(() => {
@@ -229,8 +214,12 @@ export default function ProgramPage() {
         const slotKey = item.workshopSlot;
         if (!slotKey) return item;
 
-        if (slotKey === "sheltertur") {
-          return item;
+        if (slotKey === "sheltertur" || slotKey === "gyserløb") {
+          return {
+            ...item,
+            workshops: undefined,
+            beskrivelse: undefined,
+          };
         }
 
         if (isKursusleder && slotKey === "aftengrupper") {
@@ -258,13 +247,6 @@ export default function ProgramPage() {
               beskrivelse: workshopLines || undefined,
             };
           }
-
-          const names = workshopoversigt[slotKey] || [];
-          return {
-            ...item,
-            workshops: names.length > 0 ? names : undefined,
-            beskrivelse: names.length > 0 ? names.join(", ") : undefined,
-          };
         }
 
         if (members.length === 0) return item;
@@ -292,7 +274,7 @@ export default function ProgramPage() {
         };
       }),
     }));
-  }, [members, baseProgram, workshopoversigt, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse]);
+  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse]);
 
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;
