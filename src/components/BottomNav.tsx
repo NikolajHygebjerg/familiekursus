@@ -15,7 +15,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/program", label: "Program", icon: "program" },
-  { href: "/mod-os", label: "Mød os", icon: "meetUs", userOnly: true },
+  { href: "/mod-os", label: "Mød os", icon: "meetUs" },
   { href: "/sange", label: "Sange", icon: "songs" },
   { href: "/tilmeldte", label: "Dine workshops", icon: "myWorkshops" },
   { href: "/", label: "Workshops", icon: "workshops" },

@@ -7,6 +7,7 @@ const TABLE_BRUGERE = "Brugere";
 const TABLE_WORKSHOPOVERSIGT = "Workshopoversigt";
 const TABLE_WORKSHOPBACKEND = "Workshopbackend";
 const TABLE_FAMILIELOEB = "Familieløbet";
+const TABLE_MOED_OS = "Mød os";
 const ALDERSGRUPPER_TABLE_NAMES = [
   "Aldersgrupper",
   "Børn i aldersgrupper",
@@ -1857,4 +1858,88 @@ export function formatAldersgruppeBeskrivelse(blocks: FamilyAldersgruppeBlock[])
     })
     .join("\n")
     .trim();
+}
+
+// --- Mød os-tabel (navn/billede-overrides; fallback til statiske filer i public/) ---
+
+const MOED_OS_SLUG_FIELDS = ["Slug", "slug"];
+const MOED_OS_NAVN_FIELDS = ["Navn", "Name", "navn", "name"];
+const MOED_OS_BILLEDE_FIELDS = ["Billede", "Photo", "Image", "billede"];
+const MOED_OS_EMAIL_FIELDS = ["Email", "A Email", "email"];
+
+export interface MoedOsAirtableOverride {
+  slug: string;
+  name: string;
+  image: string;
+  recordId: string;
+  linkedEmail: string | null;
+}
+
+function getAttachmentUrl(record: AirtableRecord, fieldNames: string[]): string | null {
+  for (const fieldName of fieldNames) {
+    const value = record.fields[fieldName];
+    if (!Array.isArray(value) || value.length === 0) continue;
+    const first = value[0];
+    if (typeof first === "object" && first !== null && "url" in first) {
+      const url = (first as { url?: string }).url;
+      if (url?.trim()) return url.trim();
+    }
+  }
+  return null;
+}
+
+export async function getMoedOsAirtableOverrides(): Promise<Map<string, MoedOsAirtableOverride>> {
+  const overrides = new Map<string, MoedOsAirtableOverride>();
+  try {
+    const records = await fetchTableRecords(TABLE_MOED_OS);
+    for (const record of records) {
+      const slug = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
+      if (!slug) continue;
+      const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
+      const image = getAttachmentUrl(record, MOED_OS_BILLEDE_FIELDS);
+      if (!name && !image) continue;
+      overrides.set(slug, {
+        slug,
+        name: name || slug,
+        image: image || "",
+        recordId: record.id,
+        linkedEmail: getFieldValue(record, MOED_OS_EMAIL_FIELDS),
+      });
+    }
+  } catch {
+    // Tabellen findes måske ikke endnu
+  }
+  return overrides;
+}
+
+export async function upsertMoedOsAirtableRecord(
+  slug: string,
+  fields: { name?: string; imageUrl?: string; linkedEmail?: string | null }
+): Promise<string> {
+  const normalizedSlug = slug.trim().toLowerCase();
+  const overrides = await getMoedOsAirtableOverrides();
+  const existing = overrides.get(normalizedSlug);
+
+  const fieldNames = await getTableFieldNames(TABLE_MOED_OS);
+  const slugField = resolveFieldName(fieldNames, MOED_OS_SLUG_FIELDS);
+  const navnField = resolveFieldName(fieldNames, MOED_OS_NAVN_FIELDS);
+  const billedeField = resolveFieldName(fieldNames, MOED_OS_BILLEDE_FIELDS);
+  const emailField = resolveFieldName(fieldNames, MOED_OS_EMAIL_FIELDS);
+
+  const payload: Record<string, unknown> = {
+    [slugField]: normalizedSlug,
+  };
+  if (fields.name?.trim()) payload[navnField] = fields.name.trim();
+  if (fields.imageUrl?.trim()) payload[billedeField] = [{ url: fields.imageUrl.trim() }];
+  if (fields.linkedEmail !== undefined) {
+    payload[emailField] = fields.linkedEmail?.trim() || "";
+  }
+
+  if (existing?.recordId) {
+    await updateAirtableRecord(TABLE_MOED_OS, existing.recordId, payload);
+    return existing.recordId;
+  }
+
+  const created = await createAirtableRecord(TABLE_MOED_OS, payload);
+  return created.id;
 }
