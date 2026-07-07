@@ -1,6 +1,6 @@
 import { put } from "@vercel/blob";
 import { getBrugerByEmail, getMoedOsAirtableState, upsertMoedOsAirtableRecord } from "@/lib/airtable";
-import { isBlobUploadConfigured, moedOsImageProxyUrl } from "@/lib/blob-config";
+import { isBlobUploadConfigured, moedOsImageProxyUrl, blobStoreOptions } from "@/lib/blob-config";
 import {
   canAdminEditMoedOsPerson,
   getStaticMoedOsSlugs,
@@ -68,18 +68,20 @@ export async function POST(request: Request) {
     const pathname = `moed-os/${slug}-${Date.now()}.${ext}`;
     const blob = await put(pathname, file, {
       access: "private",
+      ...blobStoreOptions(),
     });
 
-    const imageUrl = moedOsImageProxyUrl(blob.pathname);
+    const imageUrl = `${moedOsImageProxyUrl(blob.pathname)}&v=${Date.now()}`;
 
     await upsertMoedOsAirtableRecord(slug, {
       name: person.name,
       imageUrl,
+      blobPathname: blob.pathname,
       linkedEmail: person.linkedEmail,
       hidden: false,
     });
 
-    return NextResponse.json({ ok: true, imageUrl });
+    return NextResponse.json({ ok: true, imageUrl, pathname: blob.pathname });
   } catch (error) {
     console.error("Mød os upload fejl:", error);
     return NextResponse.json(

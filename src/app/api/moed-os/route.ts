@@ -13,6 +13,7 @@ import {
   slugFromPersonName,
 } from "@/lib/moed-os";
 import { isBlobUploadConfigured } from "@/lib/blob-config";
+import { applyMoedOsBlobImages, getLatestMoedOsBlobPathBySlug } from "@/lib/moed-os-blobs";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,10 @@ export async function GET(request: Request) {
       adminNavn = bruger?.adminNavn ?? null;
     }
 
-    const people = buildMoedOsPersonViews(airtableState, email, adminNavn, isAdmin);
+    const people = applyMoedOsBlobImages(
+      buildMoedOsPersonViews(airtableState, email, adminNavn, isAdmin),
+      await getLatestMoedOsBlobPathBySlug()
+    );
 
     return NextResponse.json({
       title: MOED_OS_TITLE,

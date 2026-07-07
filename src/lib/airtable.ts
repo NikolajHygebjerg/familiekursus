@@ -1,3 +1,5 @@
+import { normalizeMoedOsStoredImage, toAbsoluteMoedOsImageUrl } from "@/lib/blob-config";
+
 const AIRTABLE_BASE_ID = "appWYXnvNcnZS3yPu";
 // 2026: workshop-tilmeldinger (tabel-ID fra Airtable-URL). Betalt: tabel med dem der har betalt. Program: dagsprogrammer
 const TABLE_2026 = "tblbCaeQzsAhNQyF3";
@@ -946,7 +948,7 @@ async function getTableFieldNames(tableId: string): Promise<Set<string>> {
       const data = (await res.json()) as { tables?: { id: string; name?: string; fields?: { name: string }[] }[] };
       const tables = data.tables ?? [];
       for (const t of tables) {
-        if (t.id === tableId || t.name === tableId || t.name === "2026") {
+        if (t.id === tableId || t.name === tableId) {
           const names = new Set<string>();
           for (const f of t.fields ?? []) {
             if (f.name) names.add(f.name);
@@ -1937,9 +1939,13 @@ function getAttachmentUrl(record: AirtableRecord, fieldNames: string[]): string 
 
 function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtableOverride {
   const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
-  const imageFromText = getFieldValue(record, MOED_OS_BILLEDE_URL_FIELDS);
+  const imageFromTextRaw = getFieldValue(record, MOED_OS_BILLEDE_URL_FIELDS);
   const imageFromAttachment = getAttachmentUrl(record, MOED_OS_BILLEDE_FIELDS);
-  const image = imageFromText?.trim() || imageFromAttachment || "";
+  let image = "";
+  if (imageFromTextRaw?.trim()) {
+    image = normalizeMoedOsStoredImage(imageFromTextRaw);
+  }
+  if (!image && imageFromAttachment) image = imageFromAttachment;
   return {
     slug,
     name: name || slug,
@@ -2007,6 +2013,7 @@ export async function upsertMoedOsAirtableRecord(
   fields: {
     name?: string;
     imageUrl?: string;
+    blobPathname?: string;
     linkedEmail?: string | null;
     hidden?: boolean;
   }
@@ -2025,15 +2032,18 @@ export async function upsertMoedOsAirtableRecord(
     [slugField]: normalizedSlug,
   };
   if (fields.name?.trim()) payload[navnField] = fields.name.trim();
-  if (fields.imageUrl?.trim()) {
-    const imageUrl = fields.imageUrl.trim();
+
+  const storedImageRef = fields.blobPathname?.trim() || fields.imageUrl?.trim();
+  if (storedImageRef) {
     const urlFieldName = MOED_OS_BILLEDE_URL_FIELDS.find((name) => fieldNames.has(name));
     if (urlFieldName) {
-      payload[urlFieldName] = imageUrl;
+      payload[urlFieldName] = fields.blobPathname?.trim() || storedImageRef;
     }
-    const { toAbsoluteMoedOsImageUrl } = await import("@/lib/blob-config");
-    payload[billedeField] = [{ url: toAbsoluteMoedOsImageUrl(imageUrl) }];
+    if (fieldNames.has(billedeField) && fields.imageUrl?.trim()) {
+      payload[billedeField] = [{ url: toAbsoluteMoedOsImageUrl(fields.imageUrl.trim()) }];
+    }
   }
+
   if (fields.linkedEmail !== undefined) {
     payload[emailField] = fields.linkedEmail?.trim() || "";
   }

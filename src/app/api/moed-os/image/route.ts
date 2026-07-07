@@ -1,4 +1,5 @@
 import { get } from "@vercel/blob";
+import { blobStoreOptions } from "@/lib/blob-config";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Adgang nægtet" }, { status: 403 });
     }
 
-    const result = await get(pathname, { access: "private" });
+    const result = await get(pathname, { access: "private", ...blobStoreOptions() });
     if (!result || result.statusCode !== 200 || !result.stream) {
       return new NextResponse("Ikke fundet", { status: 404 });
     }
