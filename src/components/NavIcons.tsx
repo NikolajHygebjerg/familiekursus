@@ -7,7 +7,8 @@ type NavIconName =
   | "myWorkshops"
   | "workshops"
   | "register"
-  | "race";
+  | "race"
+  | "evaluation";
 
 const ICONS: Record<NavIconName, ReactNode> = {
   program: (
@@ -80,6 +81,17 @@ const ICONS: Record<NavIconName, ReactNode> = {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </>
+  ),
+  evaluation: (
+    <>
+      <path
+        d="M8 4h8a2 2 0 0 1 2 2v14l-4-2.5L10 20V6a2 2 0 0 1 2-2Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path d="M9 9h6M9 12.5h4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
     </>
   ),
 };
