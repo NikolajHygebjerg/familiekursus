@@ -6,28 +6,45 @@ import { SANGE } from "@/data/sange";
 
 type Tab = "familiekursus" | "lejrbal";
 
+const LEJRBAL_TOC_ID = "lejrbal-indholdsfortegnelse";
+
 function SongCard({
   title,
   subtitle,
   stanzas,
   id,
+  showBackToToc,
 }: {
   title: string;
   subtitle?: string;
   stanzas: string[][];
   id?: string;
+  showBackToToc?: boolean;
 }) {
   return (
     <article
       id={id}
       className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
-      <h2 className="border-b border-slate-100 bg-amber-50 px-4 py-3 text-lg font-semibold text-slate-800">
-        {title}
-        {subtitle && (
-          <span className="mt-0.5 block text-sm font-normal text-slate-500">{subtitle}</span>
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-amber-50 px-4 py-3">
+        <h2 className="min-w-0 text-lg font-semibold text-slate-800">
+          {title}
+          {subtitle && (
+            <span className="mt-0.5 block text-sm font-normal text-slate-500">{subtitle}</span>
+          )}
+        </h2>
+        {showBackToToc && (
+          <a
+            href={`#${LEJRBAL_TOC_ID}`}
+            aria-label="Til indholdsfortegnelse"
+            className="mt-0.5 shrink-0 rounded-lg p-1.5 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </a>
         )}
-      </h2>
+      </div>
       <div className="space-y-5 px-4 py-5">
         {stanzas.map((stanza, index) => (
           <p
@@ -87,7 +104,10 @@ export default function SangePage() {
 
       {tab === "lejrbal" && (
         <div className="space-y-6">
-          <nav className="rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm">
+          <nav
+            id={LEJRBAL_TOC_ID}
+            className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm"
+          >
             <h2 className="mb-4 text-lg font-semibold text-slate-800">Indholdsfortegnelse</h2>
             <ol className="columns-1 gap-x-6 sm:columns-2">
               {LEJRBALSSANGE.map((song, index) => (
@@ -111,6 +131,7 @@ export default function SangePage() {
               title={song.title}
               subtitle={song.artist}
               stanzas={song.stanzas}
+              showBackToToc
             />
           ))}
         </div>
