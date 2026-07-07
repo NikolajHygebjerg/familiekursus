@@ -1689,9 +1689,10 @@ function parseGroupParticipantNames(namesRaw: string): Map<string, number | null
   let remaining = namesRaw;
 
   const withAgePattern = /\b([A-Za-zÀ-ÿæøåÆØÅ\-]+)\s*\((\d+)(?:\s*år)?\)/g;
-  for (const match of namesRaw.matchAll(withAgePattern)) {
-    participants.set(match[1].toLowerCase(), parseInt(match[2], 10));
-    remaining = remaining.replace(match[0], " ");
+  let ageMatch: RegExpExecArray | null;
+  while ((ageMatch = withAgePattern.exec(namesRaw)) !== null) {
+    participants.set(ageMatch[1].toLowerCase(), parseInt(ageMatch[2], 10));
+    remaining = remaining.replace(ageMatch[0], " ");
   }
 
   for (const token of remaining.split(/\s+/)) {
