@@ -7,6 +7,12 @@ const TABLE_BRUGERE = "Brugere";
 const TABLE_WORKSHOPOVERSIGT = "Workshopoversigt";
 const TABLE_WORKSHOPBACKEND = "Workshopbackend";
 const TABLE_FAMILIELOEB = "Familieløbet";
+const ALDERSGRUPPER_TABLE_NAMES = [
+  "Aldersgrupper",
+  "Børn i aldersgrupper",
+  // Legacy – omdøb denne tabel til "Aldersgrupper" i Airtable (ikke aftengrupper-tilmelding)
+  "Aftengrupper",
+];
 
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
 
@@ -437,6 +443,45 @@ export async function getWorkshopParticipantsGrouped(
     const workshopNames = getWorkshopValues(record, possibleNames);
     const matches = workshopNames.some((w) => w.trim().toLowerCase() === optionNorm);
     if (!matches) continue;
+
+    const email = getEmailFromRecord(record)?.trim().toLowerCase() || "ukendt";
+    const navn = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
+    const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
+    const alder = formatParticipantAlder(type, getFieldValue(record, ALDER_FIELD_OPTIONS));
+    const familie = getFieldValue(record, FAMILIE_FIELDS);
+
+    let group = byEmail.get(email);
+    if (!group) {
+      group = { email, familie, members: [] };
+      byEmail.set(email, group);
+    }
+    if (familie && !group.familie) group.familie = familie;
+
+    group.members.push({ navn, alder, type });
+  }
+
+  return Array.from(byEmail.values())
+    .sort((a, b) => {
+      const labelA = (a.familie || a.email).toLocaleLowerCase("da");
+      const labelB = (b.familie || b.email).toLocaleLowerCase("da");
+      return labelA.localeCompare(labelB, "da");
+    })
+    .map((group) => ({
+      ...group,
+      members: group.members.sort((a, b) => a.navn.localeCompare(b.navn, "da")),
+    }));
+}
+
+export async function getAftengruppeParticipantsGrouped(
+  aftengruppeName: string
+): Promise<WorkshopFamilyGroup[]> {
+  const records = await fetchTableRecords(getYearTableId(getCurrentYear()));
+  const optionNorm = aftengruppeName.trim().toLowerCase();
+  const byEmail = new Map<string, WorkshopFamilyGroup>();
+
+  for (const record of records) {
+    const selected = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
+    if (!selected || selected.trim().toLowerCase() !== optionNorm) continue;
 
     const email = getEmailFromRecord(record)?.trim().toLowerCase() || "ukendt";
     const navn = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
@@ -950,6 +995,8 @@ export interface FamilyMember {
   workshop3: string | null;
   workshop4: string | null;
   voksen: string | null;
+  aftengrupper: string | null;
+  alder: number | null;
   type?: string | null;
 }
 
@@ -972,7 +1019,9 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
     const workshop3 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3);
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
+    const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
+    const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
     members.push({
       navn,
@@ -981,6 +1030,8 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
       workshop3,
       workshop4,
       voksen,
+      aftengrupper,
+      alder,
       type,
     });
   }
@@ -1002,7 +1053,9 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
     const workshop3 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3);
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
+    const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
+    const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
     members.push({
       navn,
@@ -1011,6 +1064,8 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
       workshop3,
       workshop4,
       voksen,
+      aftengrupper,
+      alder,
       type,
     });
   }
@@ -1344,6 +1399,7 @@ export interface ProgramItemFromAirtable {
   titel: string;
   workshopSlot?: WorkshopSlot;
   workshops?: string[];
+  aldersgrupperItem?: boolean;
 }
 
 export interface DagProgramFromAirtable {
@@ -1385,6 +1441,19 @@ function parseWorkshopValue(value: unknown): string[] {
       .filter(Boolean);
   }
   return [String(value).trim()].filter(Boolean);
+}
+
+function stripStjerneloebFromTitel(titel: string): string {
+  return titel
+    .replace(/\s*[-–—]\s*Stjerneløb\s*/gi, "")
+    .replace(/\s*Stjerneløb\s*[-–—]?\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isAldersgrupperProgramTitel(titel: string): boolean {
+  const t = titel.toLowerCase();
+  return t.includes("aldersopdelte") || t.includes("børn i aldersgrupper");
 }
 
 function getWorkshopSlotFromTitel(titel: string): WorkshopSlot | undefined {
@@ -1457,9 +1526,12 @@ export async function getProgram(): Promise<DagProgramFromAirtable[]> {
 
       program.push({
         tid: tid || undefined,
-        titel: cleanTitel || titel,
+        titel: isAldersgrupperProgramTitel(cleanTitel || titel)
+          ? stripStjerneloebFromTitel(cleanTitel || titel)
+          : cleanTitel || titel,
         workshopSlot: slot,
         workshops: workshops?.length ? workshops : undefined,
+        aldersgrupperItem: isAldersgrupperProgramTitel(cleanTitel || titel) || undefined,
       });
     }
 
@@ -1511,6 +1583,7 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
         titel: next.titel,
         workshopSlot: next.workshopSlot,
         workshops: next.workshops,
+        aldersgrupperItem: next.aldersgrupperItem || curr.aldersgrupperItem,
       });
       i++;
     } else if (
@@ -1527,6 +1600,7 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
         titel: curr.titel,
         workshopSlot: curr.workshopSlot || next.workshopSlot,
         workshops: curr.workshops || next.workshops,
+        aldersgrupperItem: curr.aldersgrupperItem || next.aldersgrupperItem,
       });
       i++;
     } else if (titelErKunTid) {
@@ -1536,4 +1610,250 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
     }
   }
   return result;
+}
+
+// --- Aldersgrupper-tabel (selvstændig torsdagsaktivitet – ikke aftengrupper-tilmelding) ---
+// Struktur: Rækker "Aktiviteter" og "Navne", kolonner = gruppenavne (fx "Gruppe 1: 3-5 år")
+
+const ALDERSGRUPPER_ROW_LABEL_FIELDS = ["Aktiviteter", "Type", "Række", "Rad", "Row"];
+
+async function fetchAldersgrupperRecords(): Promise<AirtableRecord[]> {
+  for (const tableName of ALDERSGRUPPER_TABLE_NAMES) {
+    try {
+      const records = await fetchTableRecords(tableName);
+      if (records.length > 0) return records;
+    } catch {
+      // Prøv næste tabelnavn
+    }
+  }
+  return [];
+}
+
+export interface AldersgruppeDefinition {
+  name: string;
+  activities: string[];
+  participantNamesRaw: string;
+  ageMin: number | null;
+  ageMax: number | null;
+}
+
+function readRecordField(record: AirtableRecord, fieldName: string): string | null {
+  const value = record.fields[fieldName];
+  if (value == null || value === "") return null;
+  if (typeof value === "string") return value.trim() || null;
+  if (Array.isArray(value) && value.length > 0) {
+    return (typeof value[0] === "string" ? value[0] : String(value[0])).trim() || null;
+  }
+  return String(value).trim() || null;
+}
+
+function parseActivitiesText(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  if (trimmed.includes("\n")) {
+    return trimmed
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+  return [trimmed];
+}
+
+function normalizeGroupKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function groupSortKey(name: string): number {
+  const match = name.match(/gruppe\s*(\d+)/i);
+  return match ? parseInt(match[1], 10) : 999;
+}
+
+function parseGroupAgeRange(groupName: string): { min: number; max: number } | null {
+  const rangeMatch = groupName.match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (rangeMatch) {
+    return { min: parseInt(rangeMatch[1], 10), max: parseInt(rangeMatch[2], 10) };
+  }
+  const plusMatch = groupName.match(/(\d+)\s*\+/);
+  if (plusMatch) {
+    return { min: parseInt(plusMatch[1], 10), max: 99 };
+  }
+  return null;
+}
+
+function getMemberFirstName(navn: string): string {
+  return navn.trim().split(/\s+/)[0]?.toLowerCase() || "";
+}
+
+function parseGroupParticipantNames(namesRaw: string): Map<string, number | null> {
+  const participants = new Map<string, number | null>();
+  let remaining = namesRaw;
+
+  const withAgePattern = /\b([A-Za-zÀ-ÿæøåÆØÅ\-]+)\s*\((\d+)(?:\s*år)?\)/g;
+  for (const match of namesRaw.matchAll(withAgePattern)) {
+    participants.set(match[1].toLowerCase(), parseInt(match[2], 10));
+    remaining = remaining.replace(match[0], " ");
+  }
+
+  for (const token of remaining.split(/\s+/)) {
+    const name = token.replace(/[^A-Za-zÀ-ÿæøåÆØÅ\-]/g, "");
+    if (name.length < 2) continue;
+    const key = name.toLowerCase();
+    if (!participants.has(key)) {
+      participants.set(key, null);
+    }
+  }
+
+  return participants;
+}
+
+function ageMatchesGroupRange(memberAge: number, group: AldersgruppeDefinition): boolean {
+  if (group.ageMin === null || group.ageMax === null) return true;
+  return memberAge >= group.ageMin && memberAge <= group.ageMax;
+}
+
+function memberMatchesAldersgruppe(member: FamilyMember, group: AldersgruppeDefinition): boolean {
+  const firstName = getMemberFirstName(member.navn);
+  if (!firstName) return false;
+
+  const participants = parseGroupParticipantNames(group.participantNamesRaw);
+  if (!participants.has(firstName)) return false;
+
+  const inlineAge = participants.get(firstName);
+  const memberAge = member.alder;
+
+  if (inlineAge !== null && inlineAge !== undefined) {
+    return memberAge === inlineAge;
+  }
+
+  if (memberAge !== null) {
+    return ageMatchesGroupRange(memberAge, group);
+  }
+
+  return true;
+}
+
+function findAldersgruppeForMember(
+  member: FamilyMember,
+  groups: AldersgruppeDefinition[]
+): AldersgruppeDefinition | undefined {
+  const firstName = getMemberFirstName(member.navn);
+  const candidates = groups.filter((group) => memberMatchesAldersgruppe(member, group));
+
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+
+  if (member.alder !== null) {
+    const inlineMatches = candidates.filter((group) => {
+      const inlineAge = parseGroupParticipantNames(group.participantNamesRaw).get(firstName);
+      return inlineAge !== null && inlineAge !== undefined && inlineAge === member.alder;
+    });
+    if (inlineMatches.length === 1) return inlineMatches[0];
+
+    const rangeMatches = candidates.filter((group) => ageMatchesGroupRange(member.alder!, group));
+    if (rangeMatches.length === 1) return rangeMatches[0];
+  }
+
+  return undefined;
+}
+
+export function nameAppearsInGroupList(memberNavn: string, namesRaw: string): boolean {
+  const target = memberNavn.trim().toLowerCase();
+  const firstName = target.split(/\s+/)[0];
+  if (!firstName) return false;
+
+  const normalized = namesRaw.toLowerCase();
+  const pattern = new RegExp(`(?:^|[\\s,(])${firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s|$|[,(])`, "i");
+  return pattern.test(normalized);
+}
+
+export async function getAldersgrupperDefinitions(): Promise<AldersgruppeDefinition[]> {
+  const records = await fetchAldersgrupperRecords();
+  if (records.length === 0) return [];
+
+  let aktiviteterRec: AirtableRecord | null = null;
+  let navneRec: AirtableRecord | null = null;
+
+  for (const rec of records) {
+    const label = getFieldValue(rec, ALDERSGRUPPER_ROW_LABEL_FIELDS)?.trim().toLowerCase();
+    if (label === "aktiviteter") aktiviteterRec = rec;
+    if (label === "navne") navneRec = rec;
+  }
+
+  const sampleRec = aktiviteterRec || navneRec || records[0];
+  const groupFieldNames = Object.keys(sampleRec.fields).filter(
+    (field) => !ALDERSGRUPPER_ROW_LABEL_FIELDS.includes(field)
+  );
+
+  const groups: AldersgruppeDefinition[] = [];
+  for (const fieldName of groupFieldNames) {
+    const activitiesRaw = aktiviteterRec ? readRecordField(aktiviteterRec, fieldName) : null;
+    const namesRaw = navneRec ? readRecordField(navneRec, fieldName) : null;
+    if (!activitiesRaw && !namesRaw) continue;
+
+    const range = parseGroupAgeRange(fieldName);
+    groups.push({
+      name: fieldName.trim(),
+      activities: parseActivitiesText(activitiesRaw || ""),
+      participantNamesRaw: namesRaw || "",
+      ageMin: range?.min ?? null,
+      ageMax: range?.max ?? null,
+    });
+  }
+
+  return groups.sort((a, b) => groupSortKey(a.name) - groupSortKey(b.name));
+}
+
+export interface FamilyAldersgruppeBlock {
+  gruppeNavn: string;
+  børn: string[];
+  aktiviteter: string[];
+}
+
+export function buildFamilyAldersgruppeBlocks(
+  members: FamilyMember[],
+  groups: AldersgruppeDefinition[]
+): FamilyAldersgruppeBlock[] {
+  const byGroup = new Map<string, { gruppeNavn: string; børn: string[]; aktiviteter: string[] }>();
+
+  for (const member of members) {
+    const type = member.type?.trim().toLowerCase() || "";
+    if (type.includes("voksen") || type.includes("forældre")) continue;
+
+    const matchedGroup = findAldersgruppeForMember(member, groups);
+
+    if (!matchedGroup) continue;
+
+    const key = normalizeGroupKey(matchedGroup.name);
+    let block = byGroup.get(key);
+    if (!block) {
+      block = {
+        gruppeNavn: matchedGroup.name,
+        børn: [],
+        aktiviteter: matchedGroup.activities,
+      };
+      byGroup.set(key, block);
+    }
+    if (!block.børn.includes(member.navn)) {
+      block.børn.push(member.navn);
+    }
+  }
+
+  return Array.from(byGroup.values()).sort(
+    (a, b) => groupSortKey(a.gruppeNavn) - groupSortKey(b.gruppeNavn)
+  );
+}
+
+export function formatAldersgruppeBeskrivelse(blocks: FamilyAldersgruppeBlock[]): string {
+  return blocks
+    .map((block) => {
+      const lines = [
+        `${block.gruppeNavn}: ${block.børn.join(", ")}`,
+        "Aktiviteter:",
+        ...block.aktiviteter,
+        "",
+      ];
+      return lines.join("\n");
+    })
+    .join("\n")
+    .trim();
 }

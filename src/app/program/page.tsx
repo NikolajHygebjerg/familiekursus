@@ -11,6 +11,7 @@ const WORKSHOPOVERSIGT_SLOTS = ["aftengrupper", "gyserløb", "sheltertur"] as co
 interface ProgramItemWithWorkshops extends Omit<ProgramItem, "workshopSlot"> {
   workshops?: string[];
   workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur";
+  aldersgrupperItem?: boolean;
 }
 
 interface DagProgramWithWorkshops {
@@ -26,6 +27,17 @@ interface FamilyMember {
   workshop3: string | null;
   workshop4: string | null;
   voksen: string | null;
+  aftengrupper: string | null;
+}
+
+function isDetStoreFamilieloeb(titel: string): boolean {
+  const t = titel.toLowerCase();
+  return t.includes("familieløb") || t.includes("familieloeb");
+}
+
+function extractHoldNumber(holdnavn: string): string {
+  const match = holdnavn.match(/\d+/);
+  return match ? match[0] : holdnavn;
 }
 
 function formatTid(tid: string): string {
@@ -59,7 +71,7 @@ function ProgramListItem({
     item.workshopSlot === "aftengrupper" ||
     item.workshopSlot === "sheltertur" ||
     item.workshopSlot === "gyserløb";
-  const showParticipants = !!item.workshopSlot && !!item.beskrivelse && (showFamilyWorkshops || linksToTilmeld);
+  const showParticipants = !!item.beskrivelse;
 
   const ArrowIcon = () => (
     <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -124,6 +136,8 @@ export default function ProgramPage() {
   const [programLoading, setProgramLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
   const [workshopoversigt, setWorkshopoversigt] = useState<Record<string, string[]>>({});
+  const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string } | null>(null);
+  const [aldersgruppeBeskrivelse, setAldersgruppeBeskrivelse] = useState<string | null>(null);
 
   const familyToLoad = isKursusleder ? null : (selectedFamily && selectedFamily.includes("@") ? selectedFamily : null);
 
@@ -164,21 +178,92 @@ export default function ProgramPage() {
     }
   }, [familyToLoad]);
 
+  useEffect(() => {
+    if (!familyToLoad || !familyToLoad.includes("@")) {
+      setFamilieloebInfo(null);
+      return;
+    }
+    fetch(`/api/familieloeb?email=${encodeURIComponent(familyToLoad)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.holdnavn) {
+          setFamilieloebInfo({ holdnavn: data.holdnavn });
+        } else {
+          setFamilieloebInfo(null);
+        }
+      })
+      .catch(() => setFamilieloebInfo(null));
+  }, [familyToLoad]);
+
+  useEffect(() => {
+    if (!familyToLoad || !familyToLoad.includes("@")) {
+      setAldersgruppeBeskrivelse(null);
+      return;
+    }
+    fetch(`/api/aldersgrupper?email=${encodeURIComponent(familyToLoad)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setAldersgruppeBeskrivelse(data?.beskrivelse || null))
+      .catch(() => setAldersgruppeBeskrivelse(null));
+  }, [familyToLoad]);
+
   const baseProgram = programData ?? UGEPROGRAM;
 
   const dagMedFamilieWorkshops = useMemo((): DagProgramWithWorkshops[] => {
     return baseProgram.map((dag) => ({
       ...dag,
       program: dag.program.map((item) => {
+        if (item.aldersgrupperItem) {
+          if (familyToLoad && aldersgruppeBeskrivelse) {
+            return { ...item, beskrivelse: aldersgruppeBeskrivelse };
+          }
+          return item;
+        }
+
+        if (isDetStoreFamilieloeb(item.titel) && familieloebInfo?.holdnavn && familyToLoad) {
+          return {
+            ...item,
+            beskrivelse: `Jeres familie er på hold nummer ${extractHoldNumber(familieloebInfo.holdnavn)}`,
+          };
+        }
+
         const slotKey = item.workshopSlot;
         if (!slotKey) return item;
 
+        if (slotKey === "sheltertur") {
+          return item;
+        }
+
+        if (isKursusleder && slotKey === "aftengrupper") {
+          return item;
+        }
+
         if (WORKSHOPOVERSIGT_SLOTS.includes(slotKey as (typeof WORKSHOPOVERSIGT_SLOTS)[number])) {
+          if (slotKey === "aftengrupper") {
+            if (members.length === 0) return item;
+            const grouped = new Map<string, string[]>();
+            for (const m of members) {
+              if (m.aftengrupper) {
+                const list = grouped.get(m.aftengrupper) || [];
+                list.push(m.navn);
+                grouped.set(m.aftengrupper, list);
+              }
+            }
+            const workshopLines = Array.from(grouped.entries())
+              .map(([gruppe, navne]) => `${gruppe}: ${navne.join(", ")}`)
+              .join("\n");
+            const familyAftengrupper = Array.from(grouped.keys());
+            return {
+              ...item,
+              workshops: familyAftengrupper.length > 0 ? familyAftengrupper : undefined,
+              beskrivelse: workshopLines || undefined,
+            };
+          }
+
           const names = workshopoversigt[slotKey] || [];
           return {
             ...item,
             workshops: names.length > 0 ? names : undefined,
-            beskrivelse: names.length > 0 ? names.join(", ") : "Ingen tilmeldt endnu",
+            beskrivelse: names.length > 0 ? names.join(", ") : undefined,
           };
         }
 
@@ -187,7 +272,7 @@ export default function ProgramPage() {
         const grouped = new Map<string, string[]>();
         for (const m of members) {
           const ws = m[slotKey as keyof FamilyMember];
-          if (ws) {
+          if (typeof ws === "string" && ws) {
             const list = grouped.get(ws) || [];
             list.push(m.navn);
             grouped.set(ws, list);
@@ -203,11 +288,11 @@ export default function ProgramPage() {
         return {
           ...item,
           workshops: familyWorkshopNames.length > 0 ? familyWorkshopNames : undefined,
-          beskrivelse: workshopLines || "Ingen fra familien tilmeldt",
+          beskrivelse: workshopLines || undefined,
         };
       }),
     }));
-  }, [members, baseProgram, workshopoversigt]);
+  }, [members, baseProgram, workshopoversigt, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse]);
 
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;

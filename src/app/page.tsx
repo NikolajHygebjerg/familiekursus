@@ -33,7 +33,17 @@ const WORKSHOP_LABELS: Record<string, string> = {
   workshop3: "Workshop 3",
   workshop4: "Workshop 4",
   voksen: "Workshop Forældre (Voksen)",
+  aftengrupper: "Aftengrupper",
 };
+
+const WORKSHOP_TABS = [
+  "workshop1",
+  "workshop2",
+  "workshop3",
+  "workshop4",
+  "voksen",
+  "aftengrupper",
+] as const;
 
 export default function AntalPage() {
   const { isKursusleder } = useFamily();
@@ -109,18 +119,17 @@ export default function AntalPage() {
     <main className="min-h-screen p-6 md:p-10">
       <div className="mx-auto max-w-4xl">
         <header className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-800">Workshopoversigt</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Workshops</h1>
           <p className="mt-1 text-slate-600">Antal tilmeldte pr. workshop-valg.</p>
           {isKursusleder && (
             <p className="mt-2 text-sm text-amber-700">
-              Tryk på en workshop for at se deltagere grupperet efter familie.
+              Tryk på en workshop eller aftengruppe for at se deltagere grupperet efter familie.
             </p>
           )}
         </header>
 
         <nav className="mb-6 flex flex-wrap gap-2">
-          {(["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const).map(
-            (key) => (
+          {WORKSHOP_TABS.map((key) => (
               <button
                 key={key}
                 onClick={() => setSelectedWorkshop(key)}
@@ -132,8 +141,7 @@ export default function AntalPage() {
               >
                 {WORKSHOP_LABELS[key]}
               </button>
-            )
-          )}
+            ))}
         </nav>
 
         <section className="rounded-xl bg-white p-6 shadow-lg">
@@ -178,7 +186,11 @@ export default function AntalPage() {
           )}
 
           {!loading && !error && data.length === 0 && (
-            <p className="text-slate-500">Ingen tilmeldinger fundet for denne workshop.</p>
+            <p className="text-slate-500">
+              {selectedWorkshop === "aftengrupper"
+                ? "Ingen tilmeldinger fundet til aftengrupper."
+                : "Ingen tilmeldinger fundet for denne workshop."}
+            </p>
           )}
 
           {!loading && !error && data.length > 0 && (
@@ -242,7 +254,7 @@ export default function AntalPage() {
               </button>
             </div>
 
-            {!loadingParticipants && !participantError && myRoles.length > 0 && (
+            {!loadingParticipants && !participantError && selectedWorkshop !== "aftengrupper" && myRoles.length > 0 && (
               <p className="mb-4 text-sm font-medium text-amber-700">
                 Din rolle:{" "}
                 {myRoles.includes("alle")
@@ -253,7 +265,7 @@ export default function AntalPage() {
               </p>
             )}
 
-            {!loadingParticipants && !participantError && (
+            {!loadingParticipants && !participantError && selectedWorkshop !== "aftengrupper" && (
               <dl className="mb-6 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">

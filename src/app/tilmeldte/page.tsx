@@ -11,6 +11,7 @@ interface FamilyMember {
   workshop3: string | null;
   workshop4: string | null;
   voksen: string | null;
+  aftengrupper: string | null;
 }
 
 interface AdminAssignedWorkshop {
@@ -139,6 +140,23 @@ export default function TilmeldtePage() {
         });
       });
     }
+
+    const aftengruppeGrouped = new Map<string, string[]>();
+    for (const member of members) {
+      if (member.aftengrupper) {
+        const list = aftengruppeGrouped.get(member.aftengrupper) || [];
+        list.push(member.navn);
+        aftengruppeGrouped.set(member.aftengrupper, list);
+      }
+    }
+    Array.from(aftengruppeGrouped.entries()).forEach(([gruppeName, participants]) => {
+      result.push({
+        slot: "Aftengruppe",
+        workshopName: gruppeName,
+        participants,
+      });
+    });
+
     return result.sort((a, b) => a.slot.localeCompare(b.slot) || a.workshopName.localeCompare(b.workshopName));
   }, [members]);
 
@@ -311,6 +329,12 @@ export default function TilmeldtePage() {
                             </div>
                           );
                         }
+                      )}
+                      {member.aftengrupper && (
+                        <div className="flex gap-2 text-sm">
+                          <dt className="w-28 shrink-0 text-slate-500">Aftengruppe:</dt>
+                          <dd className="text-slate-800">{member.aftengrupper}</dd>
+                        </div>
                       )}
                     </dl>
                   </div>

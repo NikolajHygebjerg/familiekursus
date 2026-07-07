@@ -5,8 +5,23 @@ import { FamilyProvider } from "@/context/FamilyContext";
 import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Familiekursus - Workshop Oversigter",
-  description: "Oversigt over workshop-tilmeldinger fra familiekursus",
+  title: "Familiekursus",
+  description: "Workshopoversigt og program for familiekursus på Brandbjerg",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Familiekursus",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  themeColor: "#dc8636",
 };
 
 export default function RootLayout({

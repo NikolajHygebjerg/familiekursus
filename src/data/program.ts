@@ -6,7 +6,8 @@ export interface ProgramItem {
   tid?: string;
   titel: string;
   beskrivelse?: string;
-  workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur"; // Hvis sat, vises tilmeldte i "Dagens program"
+  workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur";
+  aldersgrupperItem?: boolean;
 }
 
 export interface DagProgram {

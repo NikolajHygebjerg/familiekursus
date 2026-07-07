@@ -4,12 +4,21 @@ import {
   getWorkshopBackendInfo,
   getBrugerByEmail,
   getAdminWorkshopRoles,
+  getAftengrupperOptionsDetailed,
+  getAftengruppeParticipantsGrouped,
 } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const VALID_WORKSHOPS = ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const;
+const VALID_WORKSHOPS = [
+  "workshop1",
+  "workshop2",
+  "workshop3",
+  "workshop4",
+  "voksen",
+  "aftengrupper",
+] as const;
 type WorkshopKey = (typeof VALID_WORKSHOPS)[number];
 
 function isValidWorkshop(workshop: string | null): workshop is WorkshopKey {
@@ -25,7 +34,10 @@ export async function GET(request: Request) {
 
     if (!isValidWorkshop(workshop)) {
       return NextResponse.json(
-        { error: "Ugyldig workshop. Brug: workshop1, workshop2, workshop3, workshop4 eller voksen" },
+        {
+          error:
+            "Ugyldig workshop. Brug: workshop1, workshop2, workshop3, workshop4, voksen eller aftengrupper",
+        },
         { status: 400 }
       );
     }
@@ -39,6 +51,11 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
       }
 
+      if (workshop === "aftengrupper") {
+        const families = await getAftengruppeParticipantsGrouped(option);
+        return NextResponse.json({ option, families, backend: null, roles: [] });
+      }
+
       const [families, backend] = await Promise.all([
         getWorkshopParticipantsGrouped(workshop, option),
         getWorkshopBackendInfo(option),
@@ -46,6 +63,13 @@ export async function GET(request: Request) {
       const roles =
         backend && bruger.adminNavn ? getAdminWorkshopRoles(backend, bruger.adminNavn) : [];
       return NextResponse.json({ option, families, backend, roles });
+    }
+
+    if (workshop === "aftengrupper") {
+      const options = await getAftengrupperOptionsDetailed();
+      return NextResponse.json(
+        options.map((option) => ({ name: option.name, count: option.current }))
+      );
     }
 
     const counts = await getWorkshopCounts(workshop);
