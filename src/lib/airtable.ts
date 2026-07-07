@@ -156,6 +156,21 @@ function normalizeWorkshopName(name: string): string {
     .trim();
 }
 
+function pickCanonicalWorkshopDisplayName(
+  spellings: Map<string, number>,
+  fallback: string
+): string {
+  let best = fallback;
+  let bestCount = -1;
+  spellings.forEach((count, name) => {
+    if (count > bestCount || (count === bestCount && name.localeCompare(best, "da") < 0)) {
+      best = name;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
 export async function getWorkshopBackendInfo(
   workshopOptionName: string
 ): Promise<WorkshopBackendInfo | null> {
@@ -439,12 +454,12 @@ export async function getWorkshopParticipantsGrouped(
 ): Promise<WorkshopFamilyGroup[]> {
   const records = await fetchAllRecords();
   const possibleNames = WORKSHOP_FIELDS[workshopKey];
-  const optionNorm = workshopOptionName.trim().toLowerCase();
+  const optionNorm = normalizeWorkshopName(workshopOptionName);
   const byEmail = new Map<string, WorkshopFamilyGroup>();
 
   for (const record of records) {
     const workshopNames = getWorkshopValues(record, possibleNames);
-    const matches = workshopNames.some((w) => w.trim().toLowerCase() === optionNorm);
+    const matches = workshopNames.some((w) => normalizeWorkshopName(w) === optionNorm);
     if (!matches) continue;
 
     const email = getEmailFromRecord(record)?.trim().toLowerCase() || "ukendt";
@@ -520,22 +535,35 @@ export async function getWorkshopCounts(
 ): Promise<WorkshopCount[]> {
   const records = await fetchAllRecords();
   const possibleNames = WORKSHOP_FIELDS[workshopKey];
-  const counts = new Map<string, { count: number; participants: string[] }>();
+  const counts = new Map<
+    string,
+    { count: number; participants: string[]; spellings: Map<string, number> }
+  >();
 
   for (const record of records) {
     const workshopNames = getWorkshopValues(record, possibleNames);
     const participantName = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
     for (const name of workshopNames) {
-      const existing = counts.get(name) || { count: 0, participants: [] };
+      const trimmed = name.trim();
+      if (!trimmed) continue;
+      const norm = normalizeWorkshopName(trimmed);
+      if (!norm) continue;
+
+      const existing = counts.get(norm) || {
+        count: 0,
+        participants: [],
+        spellings: new Map<string, number>(),
+      };
       existing.count += 1;
       existing.participants.push(participantName);
-      counts.set(name, existing);
+      existing.spellings.set(trimmed, (existing.spellings.get(trimmed) || 0) + 1);
+      counts.set(norm, existing);
     }
   }
 
-  return Array.from(counts.entries())
-    .map(([name, { count, participants }]) => ({
-      name,
+  return Array.from(counts.values())
+    .map(({ count, participants, spellings }) => ({
+      name: pickCanonicalWorkshopDisplayName(spellings, "Ukendt"),
       count,
       ...(withParticipants && { participants }),
     }))
