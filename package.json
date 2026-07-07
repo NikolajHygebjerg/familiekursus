@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "generate:workshop-excel": "tsx scripts/generate-workshop-checkin-excel.ts"
+    "generate:workshop-excel": "tsx scripts/generate-workshop-checkin-excel.ts",
+    "generate:workshop-overview-a3": "tsx scripts/generate-workshop-overview-a3-excel.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.5.0",
