@@ -117,7 +117,7 @@ export function buildMoedOsPersonViews(
         {
           slug,
           name: override?.name ?? person.name,
-          image: override?.image || person.image,
+          image: override?.image?.trim() ? override.image : person.image,
           recordId: override?.recordId ?? null,
           linkedEmail: override?.linkedEmail ?? null,
           isCustom: false,

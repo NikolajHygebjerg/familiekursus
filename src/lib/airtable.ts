@@ -1890,6 +1890,7 @@ export function formatAldersgruppeBeskrivelse(blocks: FamilyAldersgruppeBlock[])
 const MOED_OS_SLUG_FIELDS = ["Slug", "slug"];
 const MOED_OS_NAVN_FIELDS = ["Navn", "Name", "navn", "name"];
 const MOED_OS_BILLEDE_FIELDS = ["Billede", "Photo", "Image", "billede"];
+const MOED_OS_BILLEDE_URL_FIELDS = ["Billede URL", "Billede sti", "Image URL", "billedeUrl"];
 const MOED_OS_EMAIL_FIELDS = ["Email", "A Email", "email"];
 
 const MOED_OS_SKJULT_FIELDS = ["Skjult", "Hidden", "skjult", "Slettet"];
@@ -1936,11 +1937,13 @@ function getAttachmentUrl(record: AirtableRecord, fieldNames: string[]): string 
 
 function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtableOverride {
   const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
-  const image = getAttachmentUrl(record, MOED_OS_BILLEDE_FIELDS);
+  const imageFromText = getFieldValue(record, MOED_OS_BILLEDE_URL_FIELDS);
+  const imageFromAttachment = getAttachmentUrl(record, MOED_OS_BILLEDE_FIELDS);
+  const image = imageFromText?.trim() || imageFromAttachment || "";
   return {
     slug,
     name: name || slug,
-    image: image || "",
+    image,
     recordId: record.id,
     linkedEmail: getFieldValue(record, MOED_OS_EMAIL_FIELDS),
   };
@@ -2022,7 +2025,15 @@ export async function upsertMoedOsAirtableRecord(
     [slugField]: normalizedSlug,
   };
   if (fields.name?.trim()) payload[navnField] = fields.name.trim();
-  if (fields.imageUrl?.trim()) payload[billedeField] = [{ url: fields.imageUrl.trim() }];
+  if (fields.imageUrl?.trim()) {
+    const imageUrl = fields.imageUrl.trim();
+    const urlFieldName = MOED_OS_BILLEDE_URL_FIELDS.find((name) => fieldNames.has(name));
+    if (urlFieldName) {
+      payload[urlFieldName] = imageUrl;
+    }
+    const { toAbsoluteMoedOsImageUrl } = await import("@/lib/blob-config");
+    payload[billedeField] = [{ url: toAbsoluteMoedOsImageUrl(imageUrl) }];
+  }
   if (fields.linkedEmail !== undefined) {
     payload[emailField] = fields.linkedEmail?.trim() || "";
   }

@@ -68,6 +68,14 @@ export default function MoedOsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
+      const imageUrl = String(data.imageUrl || "");
+      if (imageUrl) {
+        setPeople((prev) =>
+          prev.map((person) =>
+            person.slug === slug ? { ...person, image: imageUrl } : person
+          )
+        );
+      }
       setStatusBySlug((prev) => ({ ...prev, [slug]: "Billede opdateret" }));
       loadPeople();
     } catch (err) {
@@ -222,12 +230,13 @@ export default function MoedOsPage() {
             >
               <div className="relative aspect-square w-full bg-slate-100">
                 <Image
+                  key={`${person.slug}-${person.image}`}
                   src={person.image}
                   alt={person.name}
                   fill
                   sizes="(max-width: 640px) 50vw, 33vw"
                   className="object-cover object-top"
-                  unoptimized={person.image.startsWith("http")}
+                  unoptimized
                 />
               </div>
               <div className="px-2 py-2.5">
