@@ -112,7 +112,6 @@ function ProgramListItem({
     item.workshopSlot === "aftengrupper" ||
     item.workshopSlot === "sheltertur" ||
     item.workshopSlot === "gyserløb";
-  const showParticipants = !!item.beskrivelse || !!item.workshopDeltagerLinjer?.length;
 
   const ArrowIcon = () => (
     <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
