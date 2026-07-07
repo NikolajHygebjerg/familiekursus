@@ -2047,19 +2047,27 @@ async function fetchMoedOsTableRecords(): Promise<AirtableRecord[]> {
 }
 
 async function getMoedOsTableFieldNames(): Promise<Set<string>> {
+  const merged = new Set<string>();
+
+  try {
+    const schemaFields = await getTableFieldNames(TABLE_MOED_OS);
+    schemaFields.forEach((name) => merged.add(name));
+  } catch {
+    // Fortsæt til post-felter
+  }
+
   try {
     const records = await fetchMoedOsTableRecords();
-    const names = new Set<string>();
     for (const record of records) {
       for (const key of Object.keys(record.fields)) {
-        names.add(key);
+        merged.add(key);
       }
     }
-    if (names.size > 0) return names;
   } catch {
-    // Fortsæt til meta/fallback
+    // ignore
   }
-  return getTableFieldNames(TABLE_MOED_OS);
+
+  return merged;
 }
 
 async function ensureMoedOsRecordSlug(recordId: string, slug: string): Promise<void> {
@@ -2172,17 +2180,15 @@ export async function upsertMoedOsAirtableRecord(
   };
   if (fields.name?.trim()) payload[navnField] = fields.name.trim();
 
-  const titelField = MOED_OS_TITEL_FIELDS.find((name) => fieldNames.has(name));
-  if (fields.title !== undefined && titelField) {
+  const titelField = resolveFieldName(fieldNames, MOED_OS_TITEL_FIELDS);
+  if (fields.title !== undefined) {
     payload[titelField] = fields.title?.trim() || "";
   }
 
   const storedImageRef = fields.blobPathname?.trim() || fields.imageUrl?.trim();
   if (storedImageRef) {
-    const urlFieldName = MOED_OS_BILLEDE_URL_FIELDS.find((name) => fieldNames.has(name));
-    if (urlFieldName) {
-      payload[urlFieldName] = fields.blobPathname?.trim() || storedImageRef;
-    }
+    const urlFieldName = resolveFieldName(fieldNames, MOED_OS_BILLEDE_URL_FIELDS);
+    payload[urlFieldName] = fields.blobPathname?.trim() || storedImageRef;
     if (fieldNames.has(billedeField) && fields.imageUrl?.trim()) {
       payload[billedeField] = [{ url: toAbsoluteMoedOsImageUrl(fields.imageUrl.trim()) }];
     }

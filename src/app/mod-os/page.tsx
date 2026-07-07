@@ -135,6 +135,7 @@ export default function MoedOsPage() {
         )
       );
       setStatusBySlug((prev) => ({ ...prev, [slug]: "Titel opdateret" }));
+      loadPeople();
     } catch (err) {
       setStatusBySlug((prev) => ({
         ...prev,
