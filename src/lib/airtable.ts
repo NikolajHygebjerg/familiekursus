@@ -1671,6 +1671,188 @@ function mergeSplitTimeItems(program: ProgramItemFromAirtable[]): ProgramItemFro
   return result;
 }
 
+// --- Program ansvar (hvem er ansvarlig for hvilket programpunkt) ---
+
+const TABLE_PROGRAM_ANSVAR = "Program ansvar";
+const PA_KEY_FIELDS = ["Program nøgle", "Program nogle", "ProgramKey", "programKey"];
+const PA_DAG_FIELDS = ["Dag", "A Dag", "dag"];
+const PA_TID_FIELDS = ["Tid", "A Tid", "tid"];
+const PA_TITEL_FIELDS = ["Titel", "A Titel", "titel"];
+const PA_EMAIL_FIELDS = ["Admin email", "Admin Email", "Email", "email"];
+const PA_NAVN_FIELDS = ["Admin navn", "Admin Navn", "Navn", "navn"];
+const PA_NOTE_FIELDS = ["Note", "Notat", "note"];
+const PA_SORT_FIELDS = ["Rækkefølge", "Sort", "sort"];
+
+export interface ProgramAnsvarligRecord {
+  id: string;
+  programKey: string;
+  adminEmail: string;
+  adminNavn: string;
+  note: string;
+  sortOrder: number;
+}
+
+export interface AdminBrugerOption {
+  email: string;
+  navn: string;
+}
+
+export async function getAdminBrugerOptions(): Promise<AdminBrugerOption[]> {
+  const options: AdminBrugerOption[] = [];
+  try {
+    const records = await fetchTableRecords(TABLE_BRUGERE);
+    for (const record of records) {
+      if (!isAdminBrugerstatus(getFieldValue(record, BRUGERSTATUS_FIELDS))) continue;
+      const email = getEmailFromRecord(record)?.trim().toLowerCase();
+      const navn = getFieldValue(record, BRUGERE_NAVN_FIELDS)?.trim();
+      if (!email || !navn) continue;
+      options.push({ email, navn });
+    }
+  } catch {
+    // Brugere table might not exist
+  }
+  return options.sort((a, b) => a.navn.localeCompare(b.navn, "da"));
+}
+
+export async function getProgramAnsvarligeRecords(): Promise<ProgramAnsvarligRecord[]> {
+  try {
+    const records = await fetchProgramAnsvarTableRecords();
+    const result: ProgramAnsvarligRecord[] = [];
+
+    for (const record of records) {
+      const programKey = getFieldValue(record, PA_KEY_FIELDS)?.trim().toLowerCase();
+      const adminEmail = getFieldValue(record, PA_EMAIL_FIELDS)?.trim().toLowerCase();
+      const adminNavn = getFieldValue(record, PA_NAVN_FIELDS)?.trim();
+      if (!programKey || !adminEmail || !adminNavn) continue;
+
+      const sortRaw = getFieldValue(record, PA_SORT_FIELDS);
+      const sortOrder = sortRaw ? parseInt(sortRaw, 10) : result.length;
+
+      result.push({
+        id: record.id,
+        programKey,
+        adminEmail,
+        adminNavn,
+        note: getFieldValue(record, PA_NOTE_FIELDS)?.trim() || "",
+        sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+      });
+    }
+
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchProgramAnsvarTableRecords(): Promise<AirtableRecord[]> {
+  const apiKey = process.env.AIRTABLE_API_KEY;
+  if (!apiKey) {
+    throw new Error("AIRTABLE_API_KEY er ikke sat.");
+  }
+
+  const records: AirtableRecord[] = [];
+  let offset: string | undefined;
+  const encodedTable = encodeURIComponent(TABLE_PROGRAM_ANSVAR);
+
+  do {
+    const url = new URL(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodedTable}`
+    );
+    if (offset) url.searchParams.set("offset", offset);
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Airtable API fejl (${response.status}): ${error}`);
+    }
+
+    const data: AirtableResponse = await response.json();
+    records.push(...data.records);
+    offset = data.offset;
+  } while (offset);
+
+  return records;
+}
+
+async function getProgramAnsvarTableFieldNames(): Promise<Set<string>> {
+  const merged = new Set<string>();
+  try {
+    const schemaFields = await getTableFieldNames(TABLE_PROGRAM_ANSVAR);
+    schemaFields.forEach((name) => merged.add(name));
+  } catch {
+    // ignore
+  }
+  try {
+    const records = await fetchProgramAnsvarTableRecords();
+    for (const record of records) {
+      for (const key of Object.keys(record.fields)) {
+        merged.add(key);
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return merged;
+}
+
+async function deleteProgramAnsvarRecordsByKey(programKey: string): Promise<void> {
+  const normalizedKey = programKey.trim().toLowerCase();
+  const records = await fetchProgramAnsvarTableRecords();
+  for (const record of records) {
+    const key = getFieldValue(record, PA_KEY_FIELDS)?.trim().toLowerCase();
+    if (key === normalizedKey) {
+      await deleteAirtableRecord(TABLE_PROGRAM_ANSVAR, record.id);
+    }
+  }
+}
+
+export async function replaceProgramAnsvarligeRecords(
+  programKey: string,
+  dag: string,
+  tid: string | undefined,
+  titel: string,
+  ansvarlige: { adminEmail: string; adminNavn: string; note: string }[]
+): Promise<void> {
+  const normalizedKey = programKey.trim().toLowerCase();
+  await deleteProgramAnsvarRecordsByKey(normalizedKey);
+
+  if (ansvarlige.length === 0) return;
+
+  const fieldNames = await getProgramAnsvarTableFieldNames();
+  const keyField = resolveFieldName(fieldNames, PA_KEY_FIELDS);
+  const dagField = resolveFieldName(fieldNames, PA_DAG_FIELDS);
+  const tidField = resolveFieldName(fieldNames, PA_TID_FIELDS);
+  const titelField = resolveFieldName(fieldNames, PA_TITEL_FIELDS);
+  const emailField = resolveFieldName(fieldNames, PA_EMAIL_FIELDS);
+  const navnField = resolveFieldName(fieldNames, PA_NAVN_FIELDS);
+  const noteField = resolveFieldName(fieldNames, PA_NOTE_FIELDS);
+  const sortField = PA_SORT_FIELDS.find((name) => fieldNames.has(name));
+
+  for (let index = 0; index < ansvarlige.length; index += 1) {
+    const entry = ansvarlige[index];
+    const adminEmail = entry.adminEmail.trim().toLowerCase();
+    const adminNavn = entry.adminNavn.trim();
+    if (!adminEmail || !adminNavn) continue;
+
+    const payload: Record<string, unknown> = {
+      [keyField]: normalizedKey,
+      [dagField]: dag.trim(),
+      [tidField]: tid?.trim() || "",
+      [titelField]: titel.trim(),
+      [emailField]: adminEmail,
+      [navnField]: adminNavn,
+      [noteField]: entry.note.trim(),
+    };
+    if (sortField) payload[sortField] = index;
+
+    await createAirtableRecord(TABLE_PROGRAM_ANSVAR, payload);
+  }
+}
+
 // --- Aldersgrupper-tabel (selvstændig torsdagsaktivitet – ikke aftengrupper-tilmelding) ---
 // Struktur: Rækker "Aktiviteter" og "Navne", kolonner = gruppenavne (fx "Gruppe 1: 3-5 år")
 

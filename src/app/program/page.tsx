@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
 import { UGEPROGRAM, appendVoksencafeProgram, type ProgramItem } from "@/data/program";
+import {
+  buildProgramItemKey,
+  getVisibleAnsvarLines,
+  type AdminUserOption,
+  type ProgramAnsvarDraft,
+  type ProgramAnsvarlig,
+} from "@/lib/program-ansvar";
 
 const WORKSHOPOVERSIGT_SLOTS = ["aftengrupper", "gyserløb", "sheltertur"] as const;
 
@@ -57,12 +64,14 @@ function stripTimeFromTitel(titel: string): string {
 
 function ProgramListItem({
   item,
-  showFamilyWorkshops,
-  compact,
+  ansvarLines,
+  canManageAnsvarlige,
+  onManageAnsvarlige,
 }: {
   item: ProgramItemWithWorkshops;
-  showFamilyWorkshops?: boolean;
-  compact?: boolean;
+  ansvarLines?: string[];
+  canManageAnsvarlige?: boolean;
+  onManageAnsvarlige?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasWorkshops = item.workshops && item.workshops.length > 0;
@@ -81,8 +90,34 @@ function ProgramListItem({
 
   const displayTitel = item.tid ? stripTimeFromTitel(item.titel) : item.titel;
 
-  return (
-    <div className={compact ? "min-w-0 flex-1" : ""}>
+  const titleContent = linksToTilmeld ? (
+    <Link
+      href="/tilmeld"
+      className="font-medium text-amber-700 hover:underline"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {displayTitel}
+    </Link>
+  ) : isExpandable ? (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        setExpanded(!expanded);
+      }}
+      className="inline-flex items-center gap-1.5 text-left"
+    >
+      <span className="font-medium text-slate-800">{displayTitel}</span>
+      <span className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}>
+        <ArrowIcon />
+      </span>
+    </button>
+  ) : (
+    <span className="font-medium text-slate-800">{displayTitel}</span>
+  );
+
+  const content = (
+    <>
       <div className="flex gap-4">
         {item.tid && (
           <span className="min-w-[5.5rem] shrink-0 whitespace-nowrap text-sm font-medium text-slate-500">
@@ -90,23 +125,20 @@ function ProgramListItem({
           </span>
         )}
         <div className="min-w-0 flex-1">
-          {linksToTilmeld ? (
-            <Link href="/tilmeld" className="font-medium text-amber-700 hover:underline">
-              {displayTitel}
-            </Link>
-          ) : isExpandable ? (
-            <button
-              type="button"
-              onClick={() => setExpanded(!expanded)}
-              className="inline-flex items-center gap-1.5 text-left"
-            >
-              <span className="font-medium text-slate-800">{displayTitel}</span>
-              <span className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}>
-                <ArrowIcon />
-              </span>
-            </button>
-          ) : (
-            <span className="font-medium text-slate-800">{displayTitel}</span>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">{titleContent}</div>
+            {canManageAnsvarlige && (
+              <span className="shrink-0 text-xs font-medium text-amber-700">Ansvarlige</span>
+            )}
+          </div>
+          {ansvarLines && ansvarLines.length > 0 && (
+            <div className="mt-1.5 space-y-0.5">
+              {ansvarLines.map((line, index) => (
+                <p key={`${line}-${index}`} className="text-sm font-medium text-amber-900">
+                  {line}
+                </p>
+              ))}
+            </div>
           )}
           {showParticipants && (
             <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
@@ -116,19 +148,39 @@ function ProgramListItem({
           {expanded && hasWorkshops && (
             <ul className="mt-3 space-y-1.5 border-t border-slate-200 pt-3">
               {item.workshops!.map((ws, i) => (
-                <li key={i} className="text-sm text-slate-600">• {ws}</li>
+                <li key={i} className="text-sm text-slate-600">
+                  • {ws}
+                </li>
               ))}
             </ul>
           )}
         </div>
       </div>
-    </div>
+    </>
   );
+
+  if (canManageAnsvarlige && onManageAnsvarlige) {
+    return (
+      <button
+        type="button"
+        onClick={onManageAnsvarlige}
+        className="w-full rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:border-amber-200 hover:bg-amber-50/70"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="px-2 py-2">{content}</div>;
+}
+
+function emptyAnsvarDraft(): ProgramAnsvarDraft {
+  return { adminEmail: "", adminNavn: "", note: "" };
 }
 
 export default function ProgramPage() {
   const { selectedFamily, isKursusleder } = useFamily();
-  const { email } = useAuth();
+  const { email, isAdmin, adminNavn } = useAuth();
   const [view, setView] = useState<"uge" | "dag">("uge");
   const [selectedDag, setSelectedDag] = useState(0);
   const [members, setMembers] = useState<FamilyMember[]>([]);
@@ -137,8 +189,39 @@ export default function ProgramPage() {
   const [membersLoading, setMembersLoading] = useState(false);
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string } | null>(null);
   const [aldersgruppeBeskrivelse, setAldersgruppeBeskrivelse] = useState<string | null>(null);
+  const [ansvarByKey, setAnsvarByKey] = useState<Record<string, ProgramAnsvarlig[]>>({});
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<AdminUserOption[]>([]);
+  const [selectedAnsvarItem, setSelectedAnsvarItem] = useState<{
+    dag: string;
+    item: ProgramItemWithWorkshops;
+  } | null>(null);
+  const [ansvarDraft, setAnsvarDraft] = useState<ProgramAnsvarDraft[]>([emptyAnsvarDraft()]);
+  const [ansvarSaving, setAnsvarSaving] = useState(false);
+  const [ansvarError, setAnsvarError] = useState<string | null>(null);
 
   const familyToLoad = isKursusleder ? null : (selectedFamily && selectedFamily.includes("@") ? selectedFamily : null);
+
+  const loadAnsvarlige = useCallback(() => {
+    if (!email || !isAdmin) return;
+    fetch(`/api/program/ansvarlige?email=${encodeURIComponent(email)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.byKey) return;
+        setAnsvarByKey(data.byKey);
+        setIsSuperAdmin(Boolean(data.isSuperAdmin));
+        setAdminUsers(Array.isArray(data.adminUsers) ? data.adminUsers : []);
+      })
+      .catch(() => {
+        setAnsvarByKey({});
+        setIsSuperAdmin(false);
+        setAdminUsers([]);
+      });
+  }, [email, isAdmin]);
+
+  useEffect(() => {
+    loadAnsvarlige();
+  }, [loadAnsvarlige]);
 
   useEffect(() => {
     setProgramLoading(true);
@@ -279,6 +362,76 @@ export default function ProgramPage() {
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;
 
+  const getAnsvarLines = useCallback(
+    (dag: string, item: ProgramItemWithWorkshops) => {
+      if (!isAdmin) return [];
+      const key = buildProgramItemKey(dag, item);
+      const assignments = ansvarByKey[key] || [];
+      return getVisibleAnsvarLines(assignments, {
+        isSuperAdmin,
+        email,
+        adminNavn,
+      });
+    },
+    [ansvarByKey, isAdmin, isSuperAdmin, email, adminNavn]
+  );
+
+  function openAnsvarEditor(dag: string, item: ProgramItemWithWorkshops) {
+    const key = buildProgramItemKey(dag, item);
+    const existing = ansvarByKey[key] || [];
+    setSelectedAnsvarItem({ dag, item });
+    setAnsvarError(null);
+    setAnsvarDraft(
+      existing.length > 0
+        ? existing.map((entry) => ({
+            adminEmail: entry.adminEmail,
+            adminNavn: entry.adminNavn,
+            note: entry.note,
+          }))
+        : [emptyAnsvarDraft()]
+    );
+  }
+
+  async function saveAnsvarlige() {
+    if (!email || !selectedAnsvarItem) return;
+    setAnsvarSaving(true);
+    setAnsvarError(null);
+    try {
+      const res = await fetch("/api/program/ansvarlige", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          dag: selectedAnsvarItem.dag,
+          tid: selectedAnsvarItem.item.tid,
+          titel: selectedAnsvarItem.item.titel,
+          ansvarlige: ansvarDraft.filter((entry) => entry.adminEmail.trim()),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setSelectedAnsvarItem(null);
+      loadAnsvarlige();
+    } catch (err) {
+      setAnsvarError(err instanceof Error ? err.message : "Kunne ikke gemme ansvarlige");
+    } finally {
+      setAnsvarSaving(false);
+    }
+  }
+
+  function renderProgramItem(dag: string, item: ProgramItemWithWorkshops, index: number) {
+    return (
+      <li key={`${dag}-${index}-${item.tid || ""}-${item.titel}`}>
+        <ProgramListItem
+          item={item}
+          ansvarLines={getAnsvarLines(dag, item)}
+          canManageAnsvarlige={isSuperAdmin}
+          onManageAnsvarlige={isSuperAdmin ? () => openAnsvarEditor(dag, item) : undefined}
+        />
+      </li>
+    );
+  }
+
   return (
     <main className="min-h-screen p-6 md:p-10">
       <div className="mx-auto max-w-4xl">
@@ -291,6 +444,11 @@ export default function ProgramPage() {
                 ? "Vælg en dag for at se programmet"
                 : `Dagens program for ${email || "din familie"}`}
           </p>
+          {isSuperAdmin && (
+            <p className="mt-2 text-sm text-amber-700">
+              Tryk på et programpunkt for at vælge ansvarlige og noter.
+            </p>
+          )}
         </header>
 
         <div className="mb-8 flex gap-2">
@@ -327,15 +485,8 @@ export default function ProgramPage() {
                 <h2 className="mb-4 text-xl font-semibold text-slate-800">
                   {dag.dag} {dag.dato && `– ${dag.dato}`}
                 </h2>
-                <ul className="space-y-3">
-                  {dag.program.map((item, i) => (
-                    <li key={i}>
-                      <ProgramListItem
-                        item={item}
-                        showFamilyWorkshops={!!familyToLoad}
-                      />
-                    </li>
-                  ))}
+                <ul className="space-y-1">
+                  {dag.program.map((item, i) => renderProgramItem(dag.dag, item, i))}
                 </ul>
               </div>
             ))}
@@ -377,15 +528,8 @@ export default function ProgramPage() {
                 <h2 className="mb-4 text-xl font-semibold text-slate-800">
                   {dagProgram.dag} {dagProgram.dato && `– ${dagProgram.dato}`}
                 </h2>
-                <ul className="space-y-3">
-                  {dagProgram.program.map((item, i) => (
-                    <li key={i}>
-                      <ProgramListItem
-                        item={item}
-                        showFamilyWorkshops={!!familyToLoad}
-                      />
-                    </li>
-                  ))}
+                <ul className="space-y-1">
+                  {dagProgram.program.map((item, i) => renderProgramItem(dagProgram.dag, item, i))}
                 </ul>
               </>
             ) : (
@@ -394,6 +538,121 @@ export default function ProgramPage() {
           </section>
         )}
       </div>
+
+      {selectedAnsvarItem && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">Ansvarlige</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {selectedAnsvarItem.dag}
+                  {selectedAnsvarItem.item.tid ? ` · ${formatTid(selectedAnsvarItem.item.tid)}` : ""} ·{" "}
+                  {stripTimeFromTitel(selectedAnsvarItem.item.titel)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAnsvarItem(null)}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              >
+                Luk
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {ansvarDraft.map((entry, index) => (
+                <div key={index} className="rounded-xl border border-slate-200 p-3">
+                  <label className="block text-xs font-medium text-slate-600">Ansvarlig</label>
+                  <select
+                    value={entry.adminEmail}
+                    onChange={(event) => {
+                      const adminEmail = event.target.value;
+                      const admin = adminUsers.find((user) => user.email === adminEmail);
+                      setAnsvarDraft((prev) =>
+                        prev.map((row, rowIndex) =>
+                          rowIndex === index
+                            ? {
+                                adminEmail,
+                                adminNavn: admin?.navn || "",
+                                note: row.note,
+                              }
+                            : row
+                        )
+                      );
+                    }}
+                    className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <option value="">Vælg admin</option>
+                    {adminUsers.map((admin) => (
+                      <option key={admin.email} value={admin.email}>
+                        {admin.navn}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="mt-3 block text-xs font-medium text-slate-600">Note</label>
+                  <input
+                    type="text"
+                    value={entry.note}
+                    onChange={(event) =>
+                      setAnsvarDraft((prev) =>
+                        prev.map((row, rowIndex) =>
+                          rowIndex === index ? { ...row, note: event.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder='Fx "styrer rollerne"'
+                    className="mt-1 w-full rounded border border-slate-200 px-3 py-2 text-sm"
+                  />
+
+                  {ansvarDraft.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAnsvarDraft((prev) => prev.filter((_, rowIndex) => rowIndex !== index))
+                      }
+                      className="mt-3 text-xs font-medium text-red-700 hover:underline"
+                    >
+                      Fjern ansvarlig
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAnsvarDraft((prev) => [...prev, emptyAnsvarDraft()])}
+              className="mt-4 w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Tilføj ekstra ansvarlig
+            </button>
+
+            {ansvarError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{ansvarError}</p>
+            )}
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={ansvarSaving}
+                onClick={() => void saveAnsvarlige()}
+                className="flex-1 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {ansvarSaving ? "Gemmer..." : "Gem ansvarlige"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedAnsvarItem(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Annuller
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
