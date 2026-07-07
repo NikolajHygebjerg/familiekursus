@@ -1,8 +1,50 @@
 "use client";
 
+import { useState } from "react";
+import { LEJRBALSSANGE } from "@/data/lejrbalssange";
 import { SANGE } from "@/data/sange";
 
+type Tab = "familiekursus" | "lejrbal";
+
+function SongCard({
+  title,
+  subtitle,
+  stanzas,
+  id,
+}: {
+  title: string;
+  subtitle?: string;
+  stanzas: string[][];
+  id?: string;
+}) {
+  return (
+    <article
+      id={id}
+      className="scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+    >
+      <h2 className="border-b border-slate-100 bg-amber-50 px-4 py-3 text-lg font-semibold text-slate-800">
+        {title}
+        {subtitle && (
+          <span className="mt-0.5 block text-sm font-normal text-slate-500">{subtitle}</span>
+        )}
+      </h2>
+      <div className="space-y-5 px-4 py-5">
+        {stanzas.map((stanza, index) => (
+          <p
+            key={index}
+            className="whitespace-pre-line text-base leading-relaxed text-slate-700"
+          >
+            {stanza.join("\n")}
+          </p>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 export default function SangePage() {
+  const [tab, setTab] = useState<Tab>("familiekursus");
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-6">
       <header className="mb-6 text-center">
@@ -10,28 +52,69 @@ export default function SangePage() {
         <p className="mt-2 text-sm text-slate-600">Sangtekster til familiekursus</p>
       </header>
 
-      <div className="space-y-6">
-        {SANGE.map((song) => (
-          <article
-            key={song.title}
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-          >
-            <h2 className="border-b border-slate-100 bg-amber-50 px-4 py-3 text-lg font-semibold text-slate-800">
-              {song.title}
-            </h2>
-            <div className="space-y-5 px-4 py-5">
-              {song.stanzas.map((stanza, index) => (
-                <p
-                  key={index}
-                  className="whitespace-pre-line text-base leading-relaxed text-slate-700"
-                >
-                  {stanza.join("\n")}
-                </p>
-              ))}
-            </div>
-          </article>
-        ))}
+      <div className="mb-6 flex rounded-xl border border-slate-200 bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setTab("familiekursus")}
+          className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+            tab === "familiekursus"
+              ? "bg-white text-slate-800 shadow-sm"
+              : "text-slate-600 hover:text-slate-800"
+          }`}
+        >
+          Familiekursussange
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("lejrbal")}
+          className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+            tab === "lejrbal"
+              ? "bg-white text-slate-800 shadow-sm"
+              : "text-slate-600 hover:text-slate-800"
+          }`}
+        >
+          Lejrbålssange
+        </button>
       </div>
+
+      {tab === "familiekursus" && (
+        <div className="space-y-6">
+          {SANGE.map((song) => (
+            <SongCard key={song.title} title={song.title} stanzas={song.stanzas} />
+          ))}
+        </div>
+      )}
+
+      {tab === "lejrbal" && (
+        <div className="space-y-6">
+          <nav className="rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-slate-800">Indholdsfortegnelse</h2>
+            <ol className="columns-1 gap-x-6 sm:columns-2">
+              {LEJRBALSSANGE.map((song, index) => (
+                <li key={song.id} className="mb-2 break-inside-avoid">
+                  <a
+                    href={`#${song.id}`}
+                    className="text-sm text-amber-700 hover:underline"
+                  >
+                    {index + 1}. {song.title}
+                    {song.artist ? ` – ${song.artist}` : ""}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+
+          {LEJRBALSSANGE.map((song) => (
+            <SongCard
+              key={song.id}
+              id={song.id}
+              title={song.title}
+              subtitle={song.artist}
+              stanzas={song.stanzas}
+            />
+          ))}
+        </div>
+      )}
     </main>
   );
 }
