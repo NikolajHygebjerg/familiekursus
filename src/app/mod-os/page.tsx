@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { slugFromPersonName } from "@/lib/moed-os";
 import type { MoedOsPersonView } from "@/lib/moed-os";
 
 export default function MoedOsPage() {
@@ -16,6 +17,10 @@ export default function MoedOsPage() {
   const [statusBySlug, setStatusBySlug] = useState<Record<string, string>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [uploadingSlug, setUploadingSlug] = useState<string | null>(null);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonSlug, setNewPersonSlug] = useState("");
+  const [addingPerson, setAddingPerson] = useState(false);
+  const [addPersonMessage, setAddPersonMessage] = useState<string | null>(null);
 
   const loadPeople = useCallback(() => {
     setLoading(true);
@@ -99,6 +104,60 @@ export default function MoedOsPage() {
     }
   }
 
+  async function handleDelete(slug: string, name: string) {
+    if (!email || !isSuperAdmin) return;
+    if (!window.confirm(`Slet ${name} fra Mød os?`)) return;
+
+    setStatusBySlug((prev) => ({ ...prev, [slug]: "" }));
+    try {
+      const res = await fetch("/api/moed-os", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, slug }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      loadPeople();
+    } catch (err) {
+      setStatusBySlug((prev) => ({
+        ...prev,
+        [slug]: err instanceof Error ? err.message : "Kunne ikke slette",
+      }));
+    }
+  }
+
+  async function handleAddPerson(event: React.FormEvent) {
+    event.preventDefault();
+    if (!email || !isSuperAdmin) return;
+
+    const name = newPersonName.trim();
+    if (!name) return;
+
+    setAddingPerson(true);
+    setAddPersonMessage(null);
+    try {
+      const res = await fetch("/api/moed-os", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          name,
+          slug: newPersonSlug.trim() || slugFromPersonName(name),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setNewPersonName("");
+      setNewPersonSlug("");
+      setAddPersonMessage(`${name} er tilføjet`);
+      loadPeople();
+    } catch (err) {
+      setAddPersonMessage(err instanceof Error ? err.message : "Kunne ikke tilføje person");
+    } finally {
+      setAddingPerson(false);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-6">
       <header className="mb-6 text-center">
@@ -106,10 +165,47 @@ export default function MoedOsPage() {
         <p className="mt-2 text-sm leading-relaxed text-slate-600">{title}</p>
         {isAdmin && !uploadEnabled && (
           <p className="mt-3 text-xs text-amber-700">
-            Billede-upload kræver BLOB_READ_WRITE_TOKEN i Vercel. Navne kan stadig gemmes i Airtable.
+            Billede-upload kræver forbundet Vercel Blob under Settings → Storage. Redeploy efter opsætning.
           </p>
         )}
       </header>
+
+      {isSuperAdmin && (
+        <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-800">Tilføj ny person</h2>
+          <form onSubmit={handleAddPerson} className="space-y-3">
+            <input
+              type="text"
+              value={newPersonName}
+              onChange={(e) => {
+                setNewPersonName(e.target.value);
+                if (!newPersonSlug) {
+                  setNewPersonSlug(slugFromPersonName(e.target.value));
+                }
+              }}
+              placeholder="Navn"
+              className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+            />
+            <input
+              type="text"
+              value={newPersonSlug}
+              onChange={(e) => setNewPersonSlug(e.target.value)}
+              placeholder="Slug (fx nanna-b)"
+              className="w-full rounded border border-slate-200 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={addingPerson || !newPersonName.trim()}
+              className="w-full rounded bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              {addingPerson ? "Tilføjer..." : "Tilføj person"}
+            </button>
+          </form>
+          {addPersonMessage && (
+            <p className="mt-2 text-xs text-slate-600">{addPersonMessage}</p>
+          )}
+        </section>
+      )}
 
       {loading && <p className="text-center text-slate-500">Henter...</p>}
 
@@ -180,6 +276,16 @@ export default function MoedOsPage() {
                   </p>
                 )}
 
+                {person.canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(person.slug, person.name)}
+                    className="mt-2 w-full rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                  >
+                    Slet
+                  </button>
+                )}
+
                 {statusBySlug[person.slug] && (
                   <p className="mt-1 text-center text-[11px] text-slate-500">
                     {statusBySlug[person.slug]}
@@ -193,7 +299,7 @@ export default function MoedOsPage() {
 
       {isAdmin && isSuperAdmin && (
         <p className="mt-6 text-center text-xs text-slate-500">
-          Som super-admin kan du ændre navne og uploade billeder for alle.
+          Som super-admin kan du tilføje, slette, ændre navne og uploade billeder for alle.
         </p>
       )}
 

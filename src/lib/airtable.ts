@@ -711,6 +711,31 @@ export async function updateAirtableRecord(
   }
 }
 
+export async function deleteAirtableRecord(
+  tableIdOrName: string,
+  recordId: string
+): Promise<void> {
+  const apiKey = process.env.AIRTABLE_API_KEY;
+  if (!apiKey) {
+    throw new Error("AIRTABLE_API_KEY er ikke sat.");
+  }
+
+  const response = await fetch(
+    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableIdOrName)}/${recordId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Airtable fejl (${response.status}): ${err}`);
+  }
+}
+
 export async function getBrugerRecordId(email: string): Promise<string | null> {
   const bruger = await getBrugerByEmail(email);
   return bruger?.recordId ?? null;
@@ -1867,12 +1892,33 @@ const MOED_OS_NAVN_FIELDS = ["Navn", "Name", "navn", "name"];
 const MOED_OS_BILLEDE_FIELDS = ["Billede", "Photo", "Image", "billede"];
 const MOED_OS_EMAIL_FIELDS = ["Email", "A Email", "email"];
 
+const MOED_OS_SKJULT_FIELDS = ["Skjult", "Hidden", "skjult", "Slettet"];
+
 export interface MoedOsAirtableOverride {
   slug: string;
   name: string;
   image: string;
   recordId: string;
   linkedEmail: string | null;
+}
+
+export interface MoedOsAirtableState {
+  overrides: Map<string, MoedOsAirtableOverride>;
+  hiddenSlugs: Set<string>;
+  customPeople: MoedOsAirtableOverride[];
+}
+
+function isMoedOsRecordHidden(record: AirtableRecord): boolean {
+  for (const fieldName of MOED_OS_SKJULT_FIELDS) {
+    if (!(fieldName in record.fields)) continue;
+    const value = record.fields[fieldName];
+    if (value === true) return true;
+    if (typeof value === "string") {
+      const val = value.trim().toLowerCase();
+      if (val === "true" || val === "1" || val === "ja" || val === "yes") return true;
+    }
+  }
+  return false;
 }
 
 function getAttachmentUrl(record: AirtableRecord, fieldNames: string[]): string | null {
@@ -1888,43 +1934,89 @@ function getAttachmentUrl(record: AirtableRecord, fieldNames: string[]): string 
   return null;
 }
 
-export async function getMoedOsAirtableOverrides(): Promise<Map<string, MoedOsAirtableOverride>> {
+function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtableOverride {
+  const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
+  const image = getAttachmentUrl(record, MOED_OS_BILLEDE_FIELDS);
+  return {
+    slug,
+    name: name || slug,
+    image: image || "",
+    recordId: record.id,
+    linkedEmail: getFieldValue(record, MOED_OS_EMAIL_FIELDS),
+  };
+}
+
+export async function getMoedOsAirtableState(
+  staticSlugs: ReadonlySet<string>
+): Promise<MoedOsAirtableState> {
   const overrides = new Map<string, MoedOsAirtableOverride>();
+  const hiddenSlugs = new Set<string>();
+  const customPeople: MoedOsAirtableOverride[] = [];
+
   try {
     const records = await fetchTableRecords(TABLE_MOED_OS);
     for (const record of records) {
       const slug = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
       if (!slug) continue;
-      const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
-      const image = getAttachmentUrl(record, MOED_OS_BILLEDE_FIELDS);
-      if (!name && !image) continue;
-      overrides.set(slug, {
-        slug,
-        name: name || slug,
-        image: image || "",
-        recordId: record.id,
-        linkedEmail: getFieldValue(record, MOED_OS_EMAIL_FIELDS),
-      });
+
+      if (isMoedOsRecordHidden(record)) {
+        hiddenSlugs.add(slug);
+        continue;
+      }
+
+      const data = getMoedOsRecordData(record, slug);
+      if (staticSlugs.has(slug)) {
+        overrides.set(slug, data);
+      } else if (data.name) {
+        customPeople.push(data);
+      }
     }
   } catch {
     // Tabellen findes måske ikke endnu
   }
-  return overrides;
+
+  customPeople.sort((a, b) => a.name.localeCompare(b.name, "da"));
+  return { overrides, hiddenSlugs, customPeople };
+}
+
+/** @deprecated Brug getMoedOsAirtableState */
+export async function getMoedOsAirtableOverrides(): Promise<Map<string, MoedOsAirtableOverride>> {
+  const staticSlugs = new Set<string>();
+  const state = await getMoedOsAirtableState(staticSlugs);
+  return state.overrides;
+}
+
+async function findMoedOsRecordIdBySlug(slug: string): Promise<string | null> {
+  try {
+    const records = await fetchTableRecords(TABLE_MOED_OS);
+    for (const record of records) {
+      const recordSlug = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
+      if (recordSlug === slug) return record.id;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 export async function upsertMoedOsAirtableRecord(
   slug: string,
-  fields: { name?: string; imageUrl?: string; linkedEmail?: string | null }
+  fields: {
+    name?: string;
+    imageUrl?: string;
+    linkedEmail?: string | null;
+    hidden?: boolean;
+  }
 ): Promise<string> {
   const normalizedSlug = slug.trim().toLowerCase();
-  const overrides = await getMoedOsAirtableOverrides();
-  const existing = overrides.get(normalizedSlug);
+  const existingId = await findMoedOsRecordIdBySlug(normalizedSlug);
 
   const fieldNames = await getTableFieldNames(TABLE_MOED_OS);
   const slugField = resolveFieldName(fieldNames, MOED_OS_SLUG_FIELDS);
   const navnField = resolveFieldName(fieldNames, MOED_OS_NAVN_FIELDS);
   const billedeField = resolveFieldName(fieldNames, MOED_OS_BILLEDE_FIELDS);
   const emailField = resolveFieldName(fieldNames, MOED_OS_EMAIL_FIELDS);
+  const skjultField = MOED_OS_SKJULT_FIELDS.find((name) => fieldNames.has(name));
 
   const payload: Record<string, unknown> = {
     [slugField]: normalizedSlug,
@@ -1934,12 +2026,38 @@ export async function upsertMoedOsAirtableRecord(
   if (fields.linkedEmail !== undefined) {
     payload[emailField] = fields.linkedEmail?.trim() || "";
   }
+  if (skjultField) {
+    if (fields.hidden !== undefined) {
+      payload[skjultField] = fields.hidden;
+    } else if (existingId) {
+      payload[skjultField] = false;
+    } else {
+      payload[skjultField] = false;
+    }
+  }
 
-  if (existing?.recordId) {
-    await updateAirtableRecord(TABLE_MOED_OS, existing.recordId, payload);
-    return existing.recordId;
+  if (existingId) {
+    await updateAirtableRecord(TABLE_MOED_OS, existingId, payload);
+    return existingId;
+  }
+
+  if (skjultField) {
+    payload[skjultField] = fields.hidden ?? false;
   }
 
   const created = await createAirtableRecord(TABLE_MOED_OS, payload);
   return created.id;
+}
+
+export async function deleteMoedOsPerson(slug: string, isStaticPerson: boolean): Promise<void> {
+  const normalizedSlug = slug.trim().toLowerCase();
+  if (isStaticPerson) {
+    await upsertMoedOsAirtableRecord(normalizedSlug, { hidden: true });
+    return;
+  }
+
+  const recordId = await findMoedOsRecordIdBySlug(normalizedSlug);
+  if (recordId) {
+    await deleteAirtableRecord(TABLE_MOED_OS, recordId);
+  }
 }

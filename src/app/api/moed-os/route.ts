@@ -1,10 +1,18 @@
-import { getBrugerByEmail, getMoedOsAirtableOverrides, upsertMoedOsAirtableRecord } from "@/lib/airtable";
 import {
-  MOED_OS_PEOPLE,
+  deleteMoedOsPerson,
+  getBrugerByEmail,
+  getMoedOsAirtableState,
+  upsertMoedOsAirtableRecord,
+} from "@/lib/airtable";
+import {
   MOED_OS_TITLE,
   buildMoedOsPersonViews,
+  getStaticMoedOsSlugs,
   isMoedOsSuperAdmin,
+  isStaticMoedOsSlug,
+  slugFromPersonName,
 } from "@/lib/moed-os";
+import { isBlobUploadConfigured } from "@/lib/blob-config";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +22,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const email = searchParams.get("email")?.trim().toLowerCase() || null;
 
-    const overrides = await getMoedOsAirtableOverrides();
+    const staticSlugs = getStaticMoedOsSlugs();
+    const airtableState = await getMoedOsAirtableState(staticSlugs);
     let isAdmin = false;
     let adminNavn: string | null = null;
 
@@ -24,22 +33,59 @@ export async function GET(request: Request) {
       adminNavn = bruger?.adminNavn ?? null;
     }
 
-    const people = buildMoedOsPersonViews(
-      MOED_OS_PEOPLE,
-      overrides,
-      email,
-      adminNavn,
-      isAdmin
-    );
+    const people = buildMoedOsPersonViews(airtableState, email, adminNavn, isAdmin);
 
     return NextResponse.json({
       title: MOED_OS_TITLE,
       people,
       isSuperAdmin: isAdmin && isMoedOsSuperAdmin(email),
-      uploadEnabled: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+      uploadEnabled: isBlobUploadConfigured(),
     });
   } catch (error) {
     console.error("Mød os GET fejl:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ukendt fejl" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const email = body.email?.trim().toLowerCase();
+    const name = body.name?.trim();
+    const slugInput = body.slug?.trim().toLowerCase();
+
+    if (!email || !name) {
+      return NextResponse.json({ error: "Email og navn mangler" }, { status: 400 });
+    }
+
+    if (!isMoedOsSuperAdmin(email)) {
+      return NextResponse.json({ error: "Kun super-admin kan tilføje personer" }, { status: 403 });
+    }
+
+    const slug = slugInput || slugFromPersonName(name);
+    if (!slug || slug.length < 2) {
+      return NextResponse.json({ error: "Ugyldigt slug" }, { status: 400 });
+    }
+
+    const staticSlugs = getStaticMoedOsSlugs();
+    const airtableState = await getMoedOsAirtableState(staticSlugs);
+
+    if (airtableState.customPeople.some((person) => person.slug === slug)) {
+      return NextResponse.json({ error: "En person med dette slug findes allerede" }, { status: 409 });
+    }
+
+    if (staticSlugs.has(slug) && !airtableState.hiddenSlugs.has(slug)) {
+      return NextResponse.json({ error: "En person med dette slug findes allerede" }, { status: 409 });
+    }
+
+    await upsertMoedOsAirtableRecord(slug, { name, hidden: false });
+
+    return NextResponse.json({ ok: true, slug });
+  } catch (error) {
+    console.error("Mød os POST fejl:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ukendt fejl" },
       { status: 500 }
@@ -62,11 +108,37 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Kun super-admin kan ændre navne" }, { status: 403 });
     }
 
-    await upsertMoedOsAirtableRecord(slug, { name });
+    await upsertMoedOsAirtableRecord(slug, { name, hidden: false });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Mød os PATCH fejl:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ukendt fejl" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+    const email = body.email?.trim().toLowerCase();
+    const slug = body.slug?.trim().toLowerCase();
+
+    if (!email || !slug) {
+      return NextResponse.json({ error: "Email og slug mangler" }, { status: 400 });
+    }
+
+    if (!isMoedOsSuperAdmin(email)) {
+      return NextResponse.json({ error: "Kun super-admin kan slette personer" }, { status: 403 });
+    }
+
+    await deleteMoedOsPerson(slug, isStaticMoedOsSlug(slug));
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Mød os DELETE fejl:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ukendt fejl" },
       { status: 500 }

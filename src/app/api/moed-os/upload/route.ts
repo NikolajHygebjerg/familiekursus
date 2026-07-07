@@ -1,26 +1,25 @@
 import { put } from "@vercel/blob";
-import { getBrugerByEmail, upsertMoedOsAirtableRecord } from "@/lib/airtable";
+import { getBrugerByEmail, getMoedOsAirtableState, upsertMoedOsAirtableRecord } from "@/lib/airtable";
+import { isBlobUploadConfigured, moedOsImageProxyUrl } from "@/lib/blob-config";
 import {
-  MOED_OS_PEOPLE,
-  buildMoedOsPersonViews,
   canAdminEditMoedOsPerson,
-  slugFromMoedOsImage,
+  getStaticMoedOsSlugs,
+  resolveMoedOsPersonForUpload,
 } from "@/lib/moed-os";
-import { getMoedOsAirtableOverrides } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    if (!isBlobUploadConfigured()) {
       return NextResponse.json(
         {
           error:
-            "Billede-upload er ikke konfigureret endnu. Tilføj BLOB_READ_WRITE_TOKEN i Vercel.",
+            "Billede-upload er ikke konfigureret endnu. Forbind Blob under Vercel → Storage.",
         },
         { status: 503 }
       );
@@ -44,7 +43,7 @@ export async function POST(request: Request) {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: "Billedet må max være 5 MB" }, { status: 400 });
+      return NextResponse.json({ error: "Billedet må max være 4,5 MB" }, { status: 400 });
     }
 
     const bruger = await getBrugerByEmail(email);
@@ -52,21 +51,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Kun administratorer kan uploade billeder" }, { status: 403 });
     }
 
-    const staticPerson = MOED_OS_PEOPLE.find(
-      (person) => slugFromMoedOsImage(person.image) === slug
-    );
-    if (!staticPerson) {
+    const airtableState = await getMoedOsAirtableState(getStaticMoedOsSlugs());
+    const person = resolveMoedOsPersonForUpload(slug, airtableState);
+    if (!person) {
       return NextResponse.json({ error: "Ukendt person" }, { status: 404 });
     }
 
-    const overrides = await getMoedOsAirtableOverrides();
-    const override = overrides.get(slug);
-    const personForAuth = {
-      name: override?.name ?? staticPerson.name,
-      linkedEmail: override?.linkedEmail ?? null,
-    };
-
-    if (!canAdminEditMoedOsPerson(email, bruger.adminNavn, personForAuth)) {
+    if (!canAdminEditMoedOsPerson(email, bruger.adminNavn, person)) {
       return NextResponse.json(
         { error: "Du har ikke adgang til at opdatere dette billede" },
         { status: 403 }
@@ -74,18 +65,21 @@ export async function POST(request: Request) {
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const blob = await put(`moed-os/${slug}-${Date.now()}.${ext}`, file, {
-      access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+    const pathname = `moed-os/${slug}-${Date.now()}.${ext}`;
+    const blob = await put(pathname, file, {
+      access: "private",
     });
+
+    const imageUrl = moedOsImageProxyUrl(blob.pathname);
 
     await upsertMoedOsAirtableRecord(slug, {
-      name: personForAuth.name,
-      imageUrl: blob.url,
-      linkedEmail: personForAuth.linkedEmail,
+      name: person.name,
+      imageUrl,
+      linkedEmail: person.linkedEmail,
+      hidden: false,
     });
 
-    return NextResponse.json({ ok: true, imageUrl: blob.url });
+    return NextResponse.json({ ok: true, imageUrl });
   } catch (error) {
     console.error("Mød os upload fejl:", error);
     return NextResponse.json(
