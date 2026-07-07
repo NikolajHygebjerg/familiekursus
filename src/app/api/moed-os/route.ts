@@ -142,7 +142,6 @@ export async function PATCH(request: Request) {
       await upsertMoedOsAirtableRecord(slug, {
         name: person.name,
         title,
-        linkedEmail: person.linkedEmail,
         hidden: false,
       });
       return NextResponse.json({ ok: true });

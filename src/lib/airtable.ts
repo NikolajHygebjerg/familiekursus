@@ -1,5 +1,6 @@
 import { appendVoksencafeProgram } from "@/data/program";
 import { normalizeMoedOsStoredImage, toAbsoluteMoedOsImageUrl } from "@/lib/blob-config";
+import { getStaticMoedOsNameToSlugMap } from "@/lib/moed-os";
 
 const AIRTABLE_BASE_ID = "appWYXnvNcnZS3yPu";
 // 2026: workshop-tilmeldinger (tabel-ID fra Airtable-URL). Betalt: tabel med dem der har betalt. Program: dagsprogrammer
@@ -1991,6 +1992,30 @@ function resolveMoedOsRecordSlug(record: AirtableRecord): string | null {
   return derived || null;
 }
 
+function mergeMoedOsRecordData(
+  existing: MoedOsAirtableOverride | undefined,
+  incoming: MoedOsAirtableOverride
+): MoedOsAirtableOverride {
+  if (!existing) return incoming;
+
+  const title = incoming.title?.trim() || existing.title?.trim() || null;
+  const image = incoming.image?.trim() || existing.image?.trim() || "";
+  const linkedEmail = incoming.linkedEmail?.trim() || existing.linkedEmail?.trim() || null;
+
+  return {
+    slug: incoming.slug,
+    name: incoming.name || existing.name,
+    title,
+    image,
+    recordId: incoming.title?.trim()
+      ? incoming.recordId
+      : existing.title?.trim()
+        ? existing.recordId
+        : incoming.recordId,
+    linkedEmail,
+  };
+}
+
 function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtableOverride {
   const name = getFieldValue(record, MOED_OS_NAVN_FIELDS);
   const imageFromTextRaw = getFieldValue(record, MOED_OS_BILLEDE_URL_FIELDS);
@@ -2087,6 +2112,8 @@ export async function getMoedOsAirtableState(
   const hiddenSlugs = new Set<string>();
   const customPeople: MoedOsAirtableOverride[] = [];
 
+  const staticNameToSlug = getStaticMoedOsNameToSlugMap();
+
   try {
     const records = await fetchMoedOsTableRecords();
     for (const record of records) {
@@ -2108,8 +2135,17 @@ export async function getMoedOsAirtableState(
       }
 
       const data = getMoedOsRecordData(record, slug);
-      if (staticSlugs.has(slug)) {
-        overrides.set(slug, data);
+      const nameNorm = data.name.trim().toLowerCase().replace(/\s+/g, " ");
+      const staticSlugForName = staticNameToSlug.get(nameNorm);
+      const targetSlug = staticSlugs.has(slug)
+        ? slug
+        : staticSlugForName || slug;
+
+      if (staticSlugs.has(targetSlug) || staticSlugForName) {
+        overrides.set(
+          targetSlug,
+          mergeMoedOsRecordData(overrides.get(targetSlug), { ...data, slug: targetSlug })
+        );
       } else if (data.name) {
         customPeople.push(data);
       }
@@ -2129,29 +2165,55 @@ export async function getMoedOsAirtableOverrides(): Promise<Map<string, MoedOsAi
   return state.overrides;
 }
 
-async function findMoedOsRecordIdBySlug(
+async function findMoedOsRecordIdsBySlug(
   slug: string,
   name?: string | null
-): Promise<string | null> {
+): Promise<string[]> {
   try {
     const records = await fetchMoedOsTableRecords();
     const normalizedSlug = slug.trim().toLowerCase();
+    const ids: string[] = [];
+    const seen = new Set<string>();
+
+    for (const record of records) {
+      const slugFromField = getFieldValue(record, MOED_OS_SLUG_FIELDS)?.trim().toLowerCase();
+      if (slugFromField === normalizedSlug && !seen.has(record.id)) {
+        ids.push(record.id);
+        seen.add(record.id);
+      }
+    }
+
     for (const record of records) {
       const recordSlug = resolveMoedOsRecordSlug(record);
-      if (recordSlug === normalizedSlug) return record.id;
+      if (recordSlug === normalizedSlug && !seen.has(record.id)) {
+        ids.push(record.id);
+        seen.add(record.id);
+      }
     }
 
     const normalizedName = name?.trim().toLowerCase();
     if (normalizedName) {
       for (const record of records) {
         const recordName = getFieldValue(record, MOED_OS_NAVN_FIELDS)?.trim().toLowerCase();
-        if (recordName === normalizedName) return record.id;
+        if (recordName === normalizedName && !seen.has(record.id)) {
+          ids.push(record.id);
+          seen.add(record.id);
+        }
       }
     }
+
+    return ids;
   } catch {
-    // ignore
+    return [];
   }
-  return null;
+}
+
+async function findMoedOsRecordIdBySlug(
+  slug: string,
+  name?: string | null
+): Promise<string | null> {
+  const ids = await findMoedOsRecordIdsBySlug(slug, name);
+  return ids[0] ?? null;
 }
 
 export async function upsertMoedOsAirtableRecord(
@@ -2166,7 +2228,7 @@ export async function upsertMoedOsAirtableRecord(
   }
 ): Promise<string> {
   const normalizedSlug = slug.trim().toLowerCase();
-  const existingId = await findMoedOsRecordIdBySlug(normalizedSlug, fields.name);
+  const existingIds = await findMoedOsRecordIdsBySlug(normalizedSlug, fields.name);
 
   const fieldNames = await getMoedOsTableFieldNames();
   const slugField = resolveFieldName(fieldNames, MOED_OS_SLUG_FIELDS);
@@ -2200,16 +2262,16 @@ export async function upsertMoedOsAirtableRecord(
   if (skjultField) {
     if (fields.hidden !== undefined) {
       payload[skjultField] = fields.hidden;
-    } else if (existingId) {
-      payload[skjultField] = false;
     } else {
       payload[skjultField] = false;
     }
   }
 
-  if (existingId) {
-    await updateAirtableRecord(TABLE_MOED_OS, existingId, payload);
-    return existingId;
+  if (existingIds.length > 0) {
+    for (const recordId of existingIds) {
+      await updateAirtableRecord(TABLE_MOED_OS, recordId, payload);
+    }
+    return existingIds[0];
   }
 
   if (skjultField) {

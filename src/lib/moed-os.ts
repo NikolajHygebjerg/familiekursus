@@ -36,6 +36,14 @@ export function getStaticMoedOsSlugs(): Set<string> {
   return new Set(MOED_OS_PEOPLE.map((person) => slugFromMoedOsImage(person.image)));
 }
 
+export function getStaticMoedOsNameToSlugMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const person of MOED_OS_PEOPLE) {
+    map.set(normalizePersonName(person.name), slugFromMoedOsImage(person.image));
+  }
+  return map;
+}
+
 function normalizePersonName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
