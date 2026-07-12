@@ -893,16 +893,52 @@ const ACTIVITY_FIELD_OPTIONS: Record<string, string[]> = {
 };
 const WORKSHOPOVERSIGT_MAX_FIELDS = ["# Max", "Max", "A Max"];
 const WORKSHOPOVERSIGT_LOKATION_FIELDS: Record<string, string[]> = {
-  workshop1: ["Lokation Workshop 1", "A Lokation Workshop 1", "Lokation 1", "A Lokation 1"],
-  workshop2: ["Lokation Workshop 2", "A Lokation Workshop 2", "Lokation 2", "A Lokation 2"],
-  workshop3: ["Lokation Workshop 3", "A Lokation Workshop 3", "Lokation 3", "A Lokation 3"],
-  workshop4: ["Lokation Workshop 4", "A Lokation Workshop 4", "Lokation 4", "A Lokation 4"],
+  workshop1: [
+    "Workshop 1 lokation",
+    "A Workshop 1 lokation",
+    "Lokation Workshop 1",
+    "A Lokation Workshop 1",
+    "Lokation 1",
+    "A Lokation 1",
+  ],
+  workshop2: [
+    "Workshop 2 lokation",
+    "A Workshop 2 lokation",
+    "Lokation Workshop 2",
+    "A Lokation Workshop 2",
+    "Lokation 2",
+    "A Lokation 2",
+  ],
+  workshop3: [
+    "Workshop 3 lokation",
+    "A Workshop 3 lokation",
+    "Lokation Workshop 3",
+    "A Lokation Workshop 3",
+    "Lokation 3",
+    "A Lokation 3",
+  ],
+  workshop4: [
+    "Workshop 4 lokation",
+    "A Workshop 4 lokation",
+    "Lokation Workshop 4",
+    "A Lokation Workshop 4",
+    "Lokation 4",
+    "A Lokation 4",
+  ],
   voksen: [
+    "Forældreworkshop lokation",
+    "A Forældreworkshop lokation",
     "Lokation Forældreworkshop",
     "A Lokation Forældreworkshop",
     "Lokation Workshop Forældre",
     "A Lokation Workshop Forældre",
     "Lokation forældre",
+  ],
+  aftengrupper: [
+    "Aftengrupper lokation",
+    "A Aftengrupper lokation",
+    "Lokation Aftengrupper",
+    "A Lokation Aftengrupper",
   ],
 };
 const WORKSHOPOVERSIGT_GENERIC_LOKATION_FIELDS = ["Lokation", "A Lokation", "lokation"];
