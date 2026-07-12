@@ -39,7 +39,7 @@ interface ChildAssignment {
 
 const GROUPS = {
   g1: "Gruppe 1: 3-5 år",
-  g2: "Gruppe 2: 6 år",
+  g2: "Gruppe 2:  6 år",
   g3: "Gruppe 3: 7-8 år",
   g4: "Gruppe 4: 8 år",
   g5: "Gruppe 5: 9 år",
