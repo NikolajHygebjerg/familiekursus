@@ -100,6 +100,7 @@ const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
 const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
 const ALDER_FIELD_OPTIONS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
+const BORNEGRUPPER_FIELDS = ["Børnegrupper", "A Børnegrupper", "Bornegrupper", "bornegrupper"];
 const FAMILIELOEB_HOLD_FIELDS = ["Holdnavn", "A Holdnavn", "Hold", "A Hold"];
 const FAMILIELOEB_MEDLEMMER_FIELDS = ["Medlemmer", "A Medlemmer"];
 
@@ -1141,6 +1142,7 @@ export interface FamilyMember {
   workshop4: string | null;
   voksen: string | null;
   aftengrupper: string | null;
+  bornegrupper: string | null;
   alder: number | null;
   type?: string | null;
 }
@@ -1165,6 +1167,7 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
     const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
+    const bornegrupper = getFieldValue(record, BORNEGRUPPER_FIELDS);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
     const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
@@ -1176,6 +1179,7 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
       workshop4,
       voksen,
       aftengrupper,
+      bornegrupper,
       alder,
       type,
     });
@@ -1199,6 +1203,7 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
     const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
+    const bornegrupper = getFieldValue(record, BORNEGRUPPER_FIELDS);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
     const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
@@ -1210,6 +1215,7 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
       workshop4,
       voksen,
       aftengrupper,
+      bornegrupper,
       alder,
       type,
     });
