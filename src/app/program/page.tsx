@@ -245,7 +245,6 @@ export default function ProgramPage() {
   const [programLoading, setProgramLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string } | null>(null);
-  const [aldersgruppeBeskrivelse, setAldersgruppeBeskrivelse] = useState<string | null>(null);
   const [ansvarByKey, setAnsvarByKey] = useState<Record<string, ProgramAnsvarlig[]>>({});
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [adminUsers, setAdminUsers] = useState<AdminUserOption[]>([]);
@@ -335,30 +334,12 @@ export default function ProgramPage() {
       .catch(() => setFamilieloebInfo(null));
   }, [familyToLoad]);
 
-  useEffect(() => {
-    if (!familyToLoad || !familyToLoad.includes("@")) {
-      setAldersgruppeBeskrivelse(null);
-      return;
-    }
-    fetch(`/api/aldersgrupper?email=${encodeURIComponent(familyToLoad)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setAldersgruppeBeskrivelse(data?.beskrivelse || null))
-      .catch(() => setAldersgruppeBeskrivelse(null));
-  }, [familyToLoad]);
-
   const baseProgram = appendVoksencafeProgram(programData ?? UGEPROGRAM);
 
   const dagMedFamilieWorkshops = useMemo((): DagProgramWithWorkshops[] => {
     return baseProgram.map((dag) => ({
       ...dag,
       program: dag.program.map((item) => {
-        if (item.aldersgrupperItem) {
-          if (familyToLoad && aldersgruppeBeskrivelse) {
-            return { ...item, beskrivelse: aldersgruppeBeskrivelse };
-          }
-          return item;
-        }
-
         if (isDetStoreFamilieloeb(item.titel) && familieloebInfo?.holdnavn && familyToLoad) {
           return {
             ...item,
@@ -431,7 +412,7 @@ export default function ProgramPage() {
         };
       }),
     }));
-  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeBeskrivelse]);
+  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad]);
 
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;

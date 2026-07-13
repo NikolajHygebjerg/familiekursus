@@ -37,6 +37,7 @@ interface Participant {
   familie: string;
   navn: string;
   alder: number | null;
+  type: string | null;
 }
 
 function getField(record: AirtableRecord, names: string[]): string | null {
@@ -75,6 +76,27 @@ async function fetchAllRecords(apiKey: string): Promise<AirtableRecord[]> {
   return records;
 }
 
+function firstName(navn: string): string {
+  return navn.trim().split(/\s+/)[0] || navn;
+}
+
+function isChildParticipant(participant: Participant): boolean {
+  return participant.type?.toLowerCase() === "barn" || participant.alder != null;
+}
+
+function formatParticipantName(participant: Participant): string {
+  if (isChildParticipant(participant)) {
+    const name = firstName(participant.navn);
+    return participant.alder != null ? `${name} (${participant.alder})` : name;
+  }
+  return participant.navn;
+}
+
+function formatFamilyLine(familie: string, members: Participant[]): string {
+  const names = members.map(formatParticipantName).join(", ");
+  return `${familie}: ${names}`;
+}
+
 function collectParticipants(records: AirtableRecord[]): Participant[] {
   const participants: Participant[] = [];
   for (const record of records) {
@@ -87,6 +109,7 @@ function collectParticipants(records: AirtableRecord[]): Participant[] {
       familie,
       navn,
       alder: parseAge(getField(record, ["Alder", "A Alder"])),
+      type: getField(record, ["Barn/voksen", "Barn/Voksen"]),
     });
   }
   return participants.sort(
@@ -120,10 +143,106 @@ function styleFamilyRow(row: ExcelJS.Row) {
   row.font = { bold: true };
 }
 
+function buildA3PrintSheet(
+  workbook: ExcelJS.Workbook,
+  participants: Participant[]
+): void {
+  const sheet = workbook.addWorksheet("A3 udprint");
+  const byHold = new Map<string, Participant[]>();
+  for (const participant of participants) {
+    const list = byHold.get(participant.holdnavn) || [];
+    list.push(participant);
+    byHold.set(participant.holdnavn, list);
+  }
+
+  const holdNames = Array.from(byHold.keys()).sort(
+    (a, b) => holdNumber(a) - holdNumber(b)
+  );
+  const columnCount = 3;
+  const holdsPerColumn = Math.ceil(holdNames.length / columnCount);
+  const colWidth = 9;
+  const colStarts = [1, 1 + colWidth, 1 + colWidth * 2];
+
+  sheet.mergeCells(1, 1, 1, colWidth * columnCount);
+  const title = sheet.getCell(1, 1);
+  title.value = "Familieløb — holdoversigt";
+  title.font = { bold: true, size: 18 };
+  title.alignment = { horizontal: "center", vertical: "middle" };
+  sheet.getRow(1).height = 28;
+
+  const columnRows = Array.from({ length: columnCount }, () => 3);
+
+  for (let index = 0; index < holdNames.length; index += 1) {
+    const columnIndex = Math.floor(index / holdsPerColumn);
+    const startCol = colStarts[columnIndex];
+    let row = columnRows[columnIndex];
+    const holdnavn = holdNames[index];
+    const members = byHold.get(holdnavn) || [];
+
+    sheet.mergeCells(row, startCol, row, startCol + colWidth - 1);
+    const holdCell = sheet.getCell(row, startCol);
+    holdCell.value = `${holdnavn} (${members.length})`;
+    holdCell.font = { bold: true, size: 11 };
+    holdCell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFD9EAF7" },
+    };
+    row += 1;
+
+    const families = new Map<string, Participant[]>();
+    for (const member of members) {
+      const list = families.get(member.familie) || [];
+      list.push(member);
+      families.set(member.familie, list);
+    }
+
+    for (const [familie, familyMembers] of Array.from(families.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0], "da")
+    )) {
+      sheet.mergeCells(row, startCol, row, startCol + colWidth - 1);
+      const familyCell = sheet.getCell(row, startCol);
+      familyCell.value = formatFamilyLine(familie, familyMembers);
+      familyCell.alignment = { wrapText: true, vertical: "top" };
+      familyCell.font = { size: 9 };
+      const lineCount = Math.max(1, Math.ceil(familyCell.value.toString().length / 55));
+      sheet.getRow(row).height = 12 + lineCount * 11;
+      row += 1;
+    }
+
+    row += 1;
+    columnRows[columnIndex] = row;
+  }
+
+  for (let i = 0; i < columnCount; i += 1) {
+    for (let c = 0; c < colWidth; c += 1) {
+      sheet.getColumn(colStarts[i] + c).width = c === 0 ? 14 : 10;
+    }
+  }
+
+  sheet.pageSetup = {
+    paperSize: 8, // A3
+    orientation: "landscape",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 1,
+    margins: {
+      left: 0.3,
+      right: 0.3,
+      top: 0.4,
+      bottom: 0.4,
+      header: 0.2,
+      footer: 0.2,
+    },
+  };
+}
+
 async function buildWorkbook(participants: Participant[]): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Familiekursus";
   workbook.created = new Date();
+
+  buildA3PrintSheet(workbook, participants);
 
   const overview = workbook.addWorksheet("Oversigt");
   overview.columns = [
@@ -150,7 +269,7 @@ async function buildWorkbook(participants: Participant[]): Promise<ExcelJS.Workb
     byHold.set(participant.holdnavn, list);
   }
 
-  for (const [holdnavn, members] of [...byHold.entries()].sort(
+  for (const [holdnavn, members] of Array.from(byHold.entries()).sort(
     (a, b) => holdNumber(a[0]) - holdNumber(b[0])
   )) {
     const families = new Set(members.map((member) => member.familie));
@@ -190,13 +309,13 @@ async function buildWorkbook(participants: Participant[]): Promise<ExcelJS.Workb
       }
       sheet.addRow({
         familie: "",
-        navn: member.navn,
+        navn: formatParticipantName(member),
         alder: member.alder ?? "",
       });
       listSheet.addRow({
         hold: holdnavn,
         familie: member.familie,
-        navn: member.navn,
+        navn: formatParticipantName(member),
         alder: member.alder ?? "",
       });
     }

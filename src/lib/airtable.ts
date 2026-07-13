@@ -1451,6 +1451,80 @@ export function getBornegruppeFromRecord(rec: AirtableRecord): string | null {
   return value.trim();
 }
 
+export function getDisplayFirstName(navn: string): string {
+  return navn.trim().split(/\s+/)[0] || navn;
+}
+
+function normalizeBornegruppeName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function compareBornegruppeNames(a: string, b: string): number {
+  const num = (name: string) => {
+    const match = name.match(/gruppe\s+(\d+)/i);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+  return num(a) - num(b) || a.localeCompare(b, "da");
+}
+
+export interface BornegruppeOverviewBlock {
+  gruppeNavn: string;
+  familyFirstNames: string[];
+  otherFirstNames: string[];
+}
+
+export async function getBornegruppeMembers(gruppeNavn: string): Promise<{ navn: string }[]> {
+  const target = normalizeBornegruppeName(gruppeNavn);
+  const records = await fetchAllRecords();
+  const members: { navn: string }[] = [];
+
+  for (const record of records) {
+    const bornegrupper = getBornegruppeFromRecord(record);
+    if (!bornegrupper || normalizeBornegruppeName(bornegrupper) !== target) continue;
+    const navn = getFieldValue(record, NAVN_FIELDS);
+    if (!navn) continue;
+    members.push({ navn });
+  }
+
+  return members.sort((a, b) =>
+    getDisplayFirstName(a.navn).localeCompare(getDisplayFirstName(b.navn), "da")
+  );
+}
+
+export async function getFamilyBornegruppeOverview(email: string): Promise<BornegruppeOverviewBlock[]> {
+  const familyMembers = await getFamilyMembersByEmail(email);
+  const familyChildren = familyMembers.filter((member) => member.bornegrupper);
+  const uniqueGroups = Array.from(
+    new Map(
+      familyChildren.map((member) => [
+        normalizeBornegruppeName(member.bornegrupper!),
+        member.bornegrupper!,
+      ])
+    ).values()
+  );
+
+  const blocks: BornegruppeOverviewBlock[] = [];
+
+  for (const gruppeNavn of uniqueGroups) {
+    const allInGroup = await getBornegruppeMembers(gruppeNavn);
+    const familyInGroup = familyChildren.filter(
+      (member) =>
+        normalizeBornegruppeName(member.bornegrupper!) === normalizeBornegruppeName(gruppeNavn)
+    );
+    const familyFullNames = new Set(familyInGroup.map((member) => member.navn.trim().toLowerCase()));
+
+    const familyFirstNames = familyInGroup.map((member) => getDisplayFirstName(member.navn));
+    const otherFirstNames = allInGroup
+      .filter((member) => !familyFullNames.has(member.navn.trim().toLowerCase()))
+      .map((member) => getDisplayFirstName(member.navn))
+      .sort((a, b) => a.localeCompare(b, "da"));
+
+    blocks.push({ gruppeNavn, familyFirstNames, otherFirstNames });
+  }
+
+  return blocks.sort((a, b) => compareBornegruppeNames(a.gruppeNavn, b.gruppeNavn));
+}
+
 function compareHoldNames(a: string, b: string): number {
   const num = (name: string) => {
     const match = name.match(/\d+/);

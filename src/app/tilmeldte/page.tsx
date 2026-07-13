@@ -25,6 +25,12 @@ interface AdminAssignedWorkshop {
   lokale: string | null;
 }
 
+interface BornegruppeOverviewBlock {
+  gruppeNavn: string;
+  familyFirstNames: string[];
+  otherFirstNames: string[];
+}
+
 const WORKSHOP_LABELS: Record<string, string> = {
   workshop1: "Workshop 1",
   workshop2: "Workshop 2",
@@ -43,6 +49,7 @@ export default function TilmeldtePage() {
   const [familieloebLoading, setFamilieloebLoading] = useState(false);
   const [myWorkshops, setMyWorkshops] = useState<AdminAssignedWorkshop[]>([]);
   const [myWorkshopsLoading, setMyWorkshopsLoading] = useState(false);
+  const [bornegruppeOverview, setBornegruppeOverview] = useState<BornegruppeOverviewBlock[]>([]);
 
   const displayFamily = selectedFamily;
 
@@ -81,6 +88,17 @@ export default function TilmeldtePage() {
         .finally(() => setLoadingMembers(false));
     }
   }, [isKursusleder, selectedFamily, email]);
+
+  useEffect(() => {
+    if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
+      setBornegruppeOverview([]);
+      return;
+    }
+    fetch(`/api/bornegrupper?email=${encodeURIComponent(selectedFamily)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setBornegruppeOverview(Array.isArray(data?.groups) ? data.groups : []))
+      .catch(() => setBornegruppeOverview([]));
+  }, [isKursusleder, selectedFamily]);
 
   useEffect(() => {
     if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
@@ -153,22 +171,6 @@ export default function TilmeldtePage() {
     Array.from(aftengruppeGrouped.entries()).forEach(([gruppeName, participants]) => {
       result.push({
         slot: "Aftengruppe",
-        workshopName: gruppeName,
-        participants,
-      });
-    });
-
-    const bornegruppeGrouped = new Map<string, string[]>();
-    for (const member of members) {
-      if (member.bornegrupper) {
-        const list = bornegruppeGrouped.get(member.bornegrupper) || [];
-        list.push(member.navn);
-        bornegruppeGrouped.set(member.bornegrupper, list);
-      }
-    }
-    Array.from(bornegruppeGrouped.entries()).forEach(([gruppeName, participants]) => {
-      result.push({
-        slot: "Børnegruppe",
         workshopName: gruppeName,
         participants,
       });
@@ -370,25 +372,43 @@ export default function TilmeldtePage() {
                 Workshops – hvem er på hvad
               </h2>
               <div className="space-y-4">
-                {workshopOverview.length === 0 ? (
+                {workshopOverview.length === 0 && bornegruppeOverview.length === 0 ? (
                   <p className="text-slate-500">Ingen workshops tilmeldt.</p>
                 ) : (
-                  workshopOverview.map(({ slot, workshopName, participants }) => (
-                    <div
-                      key={`${slot}-${workshopName}`}
-                      className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
-                    >
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                        {slot}
-                      </p>
-                      <h3 className="mb-2 font-semibold text-slate-800">{workshopName}</h3>
-                      <ul className="space-y-1 text-sm text-slate-600">
-                        {participants.map((p) => (
-                          <li key={p}>• {p}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))
+                  <>
+                    {workshopOverview.map(({ slot, workshopName, participants }) => (
+                      <div
+                        key={`${slot}-${workshopName}`}
+                        className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
+                      >
+                        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                          {slot}
+                        </p>
+                        <h3 className="mb-2 font-semibold text-slate-800">{workshopName}</h3>
+                        <ul className="space-y-1 text-sm text-slate-600">
+                          {participants.map((p) => (
+                            <li key={p}>• {p}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                    {bornegruppeOverview.map((group) => (
+                      <div
+                        key={group.gruppeNavn}
+                        className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
+                      >
+                        <h3 className="mb-2 font-semibold text-slate-800">{group.gruppeNavn}</h3>
+                        <ul className="space-y-1 text-sm text-slate-600">
+                          {group.familyFirstNames.map((name) => (
+                            <li key={`family-${group.gruppeNavn}-${name}`}>{name}</li>
+                          ))}
+                          {group.otherFirstNames.map((name) => (
+                            <li key={`other-${group.gruppeNavn}-${name}`}>{name}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </section>
