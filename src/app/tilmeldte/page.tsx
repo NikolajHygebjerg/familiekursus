@@ -392,22 +392,29 @@ export default function TilmeldtePage() {
                         </ul>
                       </div>
                     ))}
-                    {bornegruppeOverview.map((group) => (
-                      <div
-                        key={group.gruppeNavn}
-                        className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
-                      >
-                        <h3 className="mb-2 font-semibold text-slate-800">{group.gruppeNavn}</h3>
-                        <ul className="space-y-1 text-sm text-slate-600">
-                          {group.familyFirstNames.map((name) => (
-                            <li key={`family-${group.gruppeNavn}-${name}`}>{name}</li>
-                          ))}
-                          {group.otherFirstNames.map((name) => (
-                            <li key={`other-${group.gruppeNavn}-${name}`}>{name}</li>
-                          ))}
-                        </ul>
+                    {bornegruppeOverview.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-base font-semibold text-slate-800">
+                          Aldersopdelte børnegrupper torsdag formiddag
+                        </h3>
+                        {bornegruppeOverview.map((group) => (
+                          <div
+                            key={group.gruppeNavn}
+                            className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
+                          >
+                            <h4 className="mb-2 font-semibold text-slate-800">{group.gruppeNavn}</h4>
+                            <ul className="space-y-1 text-sm text-slate-600">
+                              {group.familyFirstNames.map((name) => (
+                                <li key={`family-${group.gruppeNavn}-${name}`}>{name}</li>
+                              ))}
+                              {group.otherFirstNames.map((name) => (
+                                <li key={`other-${group.gruppeNavn}-${name}`}>{name}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </>
                 )}
               </div>
