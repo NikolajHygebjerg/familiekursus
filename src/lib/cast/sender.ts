@@ -1,4 +1,9 @@
-import { CAST_MESSAGE_NAMESPACE, getCastDisplayUrl, getCastReceiverAppId } from "./config";
+import {
+  CAST_MESSAGE_NAMESPACE,
+  getCastDisplayUrl,
+  getCastReceiverAppId,
+  isIosDevice,
+} from "./config";
 
 let castInitialized = false;
 
@@ -64,7 +69,43 @@ export async function castSong(songId: string): Promise<"sdk" | "presentation" |
   return "failed";
 }
 
-export function canCast(): boolean {
+export function supportsNativeCast(): boolean {
   if (typeof window === "undefined") return false;
   return isCastSdkAvailable() || "PresentationRequest" in window;
+}
+
+export function canCast(): boolean {
+  return supportsNativeCast();
+}
+
+export function openTvDisplay(songId: string): void {
+  window.open(getCastDisplayUrl(songId), "_blank", "noopener,noreferrer");
+}
+
+export async function copyTvDisplayLink(songId: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(getCastDisplayUrl(songId));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function shareTvDisplay(songId: string, title: string): Promise<boolean> {
+  const url = getCastDisplayUrl(songId);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text: `Sang: ${title}`, url });
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return true;
+      }
+    }
+  }
+  return copyTvDisplayLink(songId);
+}
+
+export function shouldUseTvFallback(): boolean {
+  return isIosDevice() || !supportsNativeCast();
 }

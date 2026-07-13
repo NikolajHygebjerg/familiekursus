@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { canCast, castSong } from "@/lib/cast/sender";
+import { useState } from "react";
+import {
+  castSong,
+  copyTvDisplayLink,
+  openTvDisplay,
+  shareTvDisplay,
+  shouldUseTvFallback,
+  supportsNativeCast,
+} from "@/lib/cast/sender";
 
 function CastIcon() {
   return (
@@ -13,52 +20,133 @@ function CastIcon() {
 
 export default function CastSongButton({
   songId,
-  label = "Cast sang",
+  title,
+  label = "Vis på TV",
   className = "",
 }: {
   songId: string;
+  title: string;
   label?: string;
   className?: string;
 }) {
-  const [available, setAvailable] = useState(false);
+  const [open, setOpen] = useState(false);
   const [casting, setCasting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    setAvailable(canCast());
-  }, []);
+  async function handleOpen() {
+    setMessage(null);
 
-  if (!available) return null;
-
-  async function handleCast() {
-    setCasting(true);
-    setError(null);
-    try {
-      const result = await castSong(songId);
-      if (result === "failed") {
-        setError("Kunne ikke caste sangen");
+    if (!shouldUseTvFallback()) {
+      setCasting(true);
+      try {
+        const result = await castSong(songId);
+        if (result !== "failed") return;
+      } catch {
+        // Show fallback sheet below.
+      } finally {
+        setCasting(false);
       }
-    } catch {
-      setError("Kunne ikke caste sangen");
-    } finally {
-      setCasting(false);
     }
+
+    setOpen(true);
+  }
+
+  async function handleShare() {
+    setMessage(null);
+    const shared = await shareTvDisplay(songId, title);
+    setMessage(shared ? "Link delt eller kopieret." : "Kunne ikke dele linket.");
+  }
+
+  async function handleCopy() {
+    setMessage(null);
+    const copied = await copyTvDisplayLink(songId);
+    setMessage(copied ? "Link kopieret." : "Kunne ikke kopiere linket.");
+  }
+
+  function handleOpenDisplay() {
+    openTvDisplay(songId);
+    setOpen(false);
   }
 
   return (
-    <div className={className}>
-      <button
-        type="button"
-        onClick={() => void handleCast()}
-        disabled={casting}
-        aria-label={label}
-        title={label}
-        className="inline-flex items-center gap-1.5 rounded-lg p-1.5 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 disabled:opacity-50"
-      >
-        <CastIcon />
-        <span className="sr-only">{label}</span>
-      </button>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-    </div>
+    <>
+      <div className={className}>
+        <button
+          type="button"
+          onClick={() => void handleOpen()}
+          disabled={casting}
+          aria-label={label}
+          title={label}
+          className="inline-flex items-center gap-1.5 rounded-lg p-1.5 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 disabled:opacity-50"
+        >
+          <CastIcon />
+          <span className="sr-only">{label}</span>
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="flex max-h-[min(92dvh,100%)] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:rounded-2xl">
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800">Vis på TV</h2>
+                  <p className="mt-1 text-sm text-slate-600">{title}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
+                >
+                  Luk
+                </button>
+              </div>
+
+              <p className="mb-4 text-sm text-slate-600">
+                {supportsNativeCast()
+                  ? "Vælg en måde at vise sangen på."
+                  : "Chromecast virker ikke direkte i iPhone-browseren. Brug en af mulighederne herunder."}
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handleOpenDisplay}
+                  className="w-full rounded-xl bg-amber-500 px-4 py-3 text-left text-sm font-medium text-white hover:bg-amber-600"
+                >
+                  Åbn TV-visning
+                  <span className="mt-1 block text-xs font-normal text-amber-50">
+                    Åbn sangen i fuld skærm og brug AirPlay til at spejle til TV.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleShare()}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Del link
+                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                    Send linket til TV&apos;ens browser eller en anden enhed.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleCopy()}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Kopiér link
+                </button>
+              </div>
+
+              {message && (
+                <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

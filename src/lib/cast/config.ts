@@ -13,3 +13,8 @@ export function getCastDisplayUrl(songId: string): string {
   url.searchParams.set("id", songId);
   return url.toString();
 }
+
+export function isIosDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}

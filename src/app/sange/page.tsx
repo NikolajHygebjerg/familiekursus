@@ -55,7 +55,7 @@ function SongCard({
           )}
         </h2>
         <div className="flex shrink-0 items-start gap-1">
-          {songId && <CastSongButton songId={songId} label={`Cast ${title}`} />}
+          {songId && <CastSongButton songId={songId} title={title} label={`Vis ${title} på TV`} />}
           {showBackToToc && <BackToTocLink tocId={tocId} />}
         </div>
       </div>
@@ -97,7 +97,7 @@ function PdfSongCard({
       <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-amber-50 px-4 py-3">
         <h2 className="min-w-0 text-lg font-semibold text-slate-800">{title}</h2>
         <div className="flex shrink-0 items-start gap-1">
-          <CastSongButton songId={songId} label={`Cast ${title}`} />
+          <CastSongButton songId={songId} title={title} label={`Vis ${title} på TV`} />
           {showBackToToc && <BackToTocLink tocId={HOJSKOLE_TOC_ID} />}
         </div>
       </div>
@@ -125,7 +125,7 @@ export default function SangePage() {
       <header className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-slate-800">Sange</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Sangtekster til familiekursus. Tryk cast-ikonet for at vise en sang på TV.
+          Sangtekster til familiekursus. Tryk TV-ikonet for at vise en sang på skærmen eller TV.
         </p>
       </header>
 
