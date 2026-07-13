@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sang</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f8fafc;
+      }
+
+      #canvas-wrapper {
+        display: flex;
+        justify-content: center;
+        padding: 8px;
+      }
+
+      canvas {
+        display: block;
+        max-width: 100%;
+        height: auto !important;
+      }
+
+      #error {
+        display: none;
+        padding: 16px;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas-wrapper">
+      <canvas id="canvas"></canvas>
+    </div>
+    <p id="error">Kunne ikke vise sangen.</p>
+    <script type="module">
+      import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+
+      const pageNum = Number(new URLSearchParams(location.search).get("page") || 1);
+      const canvas = document.getElementById("canvas");
+      const error = document.getElementById("error");
+
+      async function renderPage() {
+        const pdf = await pdfjsLib.getDocument("/sange/familehoejskole-sange.pdf").promise;
+        const page = await pdf.getPage(pageNum);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const containerWidth = Math.max(document.body.clientWidth - 16, 280);
+        const scale = containerWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale });
+        const context = canvas.getContext("2d");
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({
+          canvasContext: context,
+          viewport,
+        }).promise;
+      }
+
+      renderPage().catch(() => {
+        canvas.style.display = "none";
+        error.style.display = "block";
+      });
+
+      window.addEventListener("resize", () => {
+        renderPage().catch(() => {});
+      });
+    </script>
+  </body>
+</html>

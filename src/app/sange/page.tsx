@@ -78,6 +78,7 @@ function PdfSongCard({
   id: string;
   showBackToToc?: boolean;
 }) {
+  const viewerUrl = `/sange/viewer.html?page=${page}`;
   const pdfUrl = `${HOJSKOLE_PDF_PATH}#page=${page}`;
 
   return (
@@ -90,14 +91,16 @@ function PdfSongCard({
         {showBackToToc && <BackToTocLink tocId={HOJSKOLE_TOC_ID} />}
       </div>
       <div className="bg-slate-50">
-        <object data={pdfUrl} type="application/pdf" className="h-[min(85vh,960px)] w-full">
-          <div className="space-y-3 px-4 py-6 text-sm text-slate-600">
-            <p>PDF kan ikke vises direkte i din browser.</p>
-            <a href={pdfUrl} className="font-medium text-amber-700 hover:underline">
-              Åbn {title} i sangarket
-            </a>
-          </div>
-        </object>
+        <iframe
+          src={viewerUrl}
+          title={title}
+          className="block h-[min(90vh,1100px)] w-full border-0"
+        />
+        <p className="border-t border-slate-100 px-4 py-2 text-center text-xs text-slate-500">
+          <a href={pdfUrl} className="text-amber-700 hover:underline">
+            Åbn sangen som PDF
+          </a>
+        </p>
       </div>
     </article>
   );
