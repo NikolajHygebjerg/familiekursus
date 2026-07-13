@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -217,6 +218,16 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6">
       <div className="w-full max-w-md">
+        <div className="mb-6 flex justify-center">
+          <Image
+            src="/images/logo.jpg"
+            alt="Familiekursus"
+            width={128}
+            height={128}
+            className="rounded-2xl shadow-md"
+            priority
+          />
+        </div>
         <h1 className="mb-2 text-center text-2xl font-bold text-slate-800">
           Familiekursus
         </h1>

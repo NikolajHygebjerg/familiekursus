@@ -101,6 +101,12 @@ const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
 const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
 const ALDER_FIELD_OPTIONS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
 const BORNEGRUPPER_FIELDS = ["Børnegrupper", "A Børnegrupper", "Bornegrupper", "bornegrupper"];
+const RECORD_2026_FAMILIELOEB_HOLD_FIELDS = [
+  "Familieløb",
+  "Familieløb hold",
+  "Familieloeb",
+  "Familieloeb hold",
+];
 const FAMILIELOEB_HOLD_FIELDS = ["Holdnavn", "A Holdnavn", "Hold", "A Hold"];
 const FAMILIELOEB_MEDLEMMER_FIELDS = ["Medlemmer", "A Medlemmer"];
 
@@ -1203,7 +1209,7 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
     const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
-    const bornegrupper = getFieldValue(record, BORNEGRUPPER_FIELDS);
+    const bornegrupper = getBornegruppeFromRecord(record);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
     const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
@@ -1239,7 +1245,7 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
     const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
-    const bornegrupper = getFieldValue(record, BORNEGRUPPER_FIELDS);
+    const bornegrupper = getBornegruppeFromRecord(record);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
     const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
@@ -1424,29 +1430,144 @@ function buildFamilyRaceHolds(families: FamilyRaceFamily[]): FamilyRaceHold[] {
   return holds;
 }
 
-async function getFamilyRaceFamiliesFrom2026(): Promise<FamilyRaceFamily[]> {
-  const records = await fetchTableRecords(TABLE_2026);
-  const byFamily = new Map<string, FamilyRaceMember[]>();
-
-  for (const rec of records) {
-    const familie = getFieldValue(rec, FAMILIE_FIELDS)?.trim();
-    const navn = getFieldValue(rec, NAVN_FIELDS)?.trim();
-    if (!familie || !navn) continue;
-    const alder = parseAge(getFieldValue(rec, ALDER_FIELD_OPTIONS));
-    const list = byFamily.get(familie) || [];
-    list.push({ navn, alder });
-    byFamily.set(familie, list);
-  }
-
-  return Array.from(byFamily.entries())
-    .map(([familie, members]) => ({ familie, members }))
-    .filter((f) => f.members.length > 0);
+function isFamilieloebHoldValue(value: string | null | undefined): boolean {
+  return !!value?.trim().match(/^Hold\s+\d+/i);
 }
 
-export async function syncFamilieloebAssignments(): Promise<FamilyRaceInfo[]> {
-  const families = await getFamilyRaceFamiliesFrom2026();
-  const holds = buildFamilyRaceHolds(families);
+function isBornegruppeAgeValue(value: string | null | undefined): boolean {
+  return !!value?.trim().toLowerCase().startsWith("gruppe ");
+}
 
+function getFamilieloebHoldFromRecord(rec: AirtableRecord): string | null {
+  const value = getFieldValue(rec, RECORD_2026_FAMILIELOEB_HOLD_FIELDS);
+  if (!value || !isFamilieloebHoldValue(value)) return null;
+  const match = value.trim().match(/^Hold\s+(\d+)/i);
+  return match ? `Hold ${match[1]}` : value.trim();
+}
+
+export function getBornegruppeFromRecord(rec: AirtableRecord): string | null {
+  const value = getFieldValue(rec, BORNEGRUPPER_FIELDS);
+  if (!value || !isBornegruppeAgeValue(value)) return null;
+  return value.trim();
+}
+
+function compareHoldNames(a: string, b: string): number {
+  const num = (name: string) => {
+    const match = name.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+  return num(a) - num(b) || a.localeCompare(b, "da");
+}
+
+function normalizeFamilieKey(familie: string): string {
+  return familie.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function pickFamilyHoldFromVotes(holdVotes: Map<string, number>): string | null {
+  const sorted = [...holdVotes.entries()].sort(
+    (a, b) => b[1] - a[1] || compareHoldNames(a[0], b[0])
+  );
+  return sorted[0]?.[0] ?? null;
+}
+
+function familieKeysMatch(a: string, b: string): boolean {
+  return normalizeFamilieKey(a) === normalizeFamilieKey(b);
+}
+
+async function getFamiliesFrom2026Records(
+  records: AirtableRecord[]
+): Promise<Map<string, { familie: string; members: AirtableRecord[] }>> {
+  const families = new Map<string, { familie: string; members: AirtableRecord[] }>();
+  for (const rec of records) {
+    const familie = getFieldValue(rec, FAMILIE_FIELDS)?.trim();
+    if (!familie) continue;
+    const key = normalizeFamilieKey(familie);
+    const group = families.get(key) || { familie, members: [] };
+    group.members.push(rec);
+    families.set(key, group);
+  }
+  return families;
+}
+
+function getCanonicalHoldForFamilyMembers(members: AirtableRecord[]): string | null {
+  const holdVotes = new Map<string, number>();
+  for (const rec of members) {
+    const hold = getFamilieloebHoldFromRecord(rec);
+    if (!hold) continue;
+    holdVotes.set(hold, (holdVotes.get(hold) || 0) + 1);
+  }
+  return pickFamilyHoldFromVotes(holdVotes);
+}
+
+export async function consolidateFamilieloebFamiliesIn2026(): Promise<number> {
+  const records = await fetchTableRecords(TABLE_2026);
+  const fieldNames = await getTableFieldNames(TABLE_2026);
+  const holdField = resolveFieldName(fieldNames, RECORD_2026_FAMILIELOEB_HOLD_FIELDS);
+  const families = await getFamiliesFrom2026Records(records);
+
+  let updated = 0;
+  for (const { members } of families.values()) {
+    const canonicalHold = getCanonicalHoldForFamilyMembers(members);
+    if (!canonicalHold) continue;
+
+    for (const rec of members) {
+      const currentHold = getFamilieloebHoldFromRecord(rec);
+      if (currentHold === canonicalHold) continue;
+      await updateAirtableRecord(TABLE_2026, rec.id, {
+        [holdField]: canonicalHold,
+      });
+      updated += 1;
+    }
+  }
+  return updated;
+}
+
+async function getFamilyRaceHoldsFrom2026HoldField(): Promise<FamilyRaceHold[]> {
+  const records = await fetchTableRecords(TABLE_2026);
+  const families = await getFamiliesFrom2026Records(records);
+  const byHold = new Map<string, Map<string, FamilyRaceMember[]>>();
+
+  for (const { familie, members } of families.values()) {
+    const canonicalHold = getCanonicalHoldForFamilyMembers(members);
+    if (!canonicalHold) continue;
+
+    let familiesOnHold = byHold.get(canonicalHold);
+    if (!familiesOnHold) {
+      familiesOnHold = new Map();
+      byHold.set(canonicalHold, familiesOnHold);
+    }
+
+    const familyMembers: FamilyRaceMember[] = [];
+    for (const rec of members) {
+      const navn = getFieldValue(rec, NAVN_FIELDS)?.trim();
+      if (!navn) continue;
+      familyMembers.push({
+        navn,
+        alder: parseAge(getFieldValue(rec, ALDER_FIELD_OPTIONS)),
+      });
+    }
+    if (familyMembers.length > 0) {
+      familiesOnHold.set(familie, familyMembers);
+    }
+  }
+
+  return Array.from(byHold.entries())
+    .map(([holdnavn, familiesMap]) => {
+      const familiesList = Array.from(familiesMap.entries()).map(([familie, members]) => ({
+        familie,
+        members,
+      }));
+      return {
+        holdnavn,
+        families: familiesList,
+        count: familiesList.reduce((sum, family) => sum + family.members.length, 0),
+        childAgeBuckets: new Set<string>(),
+      };
+    })
+    .sort((a, b) => compareHoldNames(a.holdnavn, b.holdnavn));
+}
+
+async function writeFamilieloebHoldsToAirtable(holds: FamilyRaceHold[]): Promise<FamilyRaceInfo[]> {
   const fieldNames = await getTableFieldNames(TABLE_FAMILIELOEB);
   const holdField = resolveFieldName(fieldNames, FAMILIELOEB_HOLD_FIELDS);
   const medlemmerField = resolveFieldName(fieldNames, FAMILIELOEB_MEDLEMMER_FIELDS);
@@ -1458,7 +1579,9 @@ export async function syncFamilieloebAssignments(): Promise<FamilyRaceInfo[]> {
     if (name?.trim()) byHoldName.set(name.trim(), rec.id);
   }
 
+  const activeHoldNames = new Set(holds.map((hold) => hold.holdnavn));
   const infos: FamilyRaceInfo[] = [];
+
   for (const hold of holds) {
     const membersText = holdMembersText(hold);
     const fields: Record<string, string> = {
@@ -1474,15 +1597,64 @@ export async function syncFamilieloebAssignments(): Promise<FamilyRaceInfo[]> {
     infos.push({ holdnavn: hold.holdnavn, membersText });
   }
 
+  for (const rec of existing) {
+    const holdnavn = getFieldValue(rec, FAMILIELOEB_HOLD_FIELDS)?.trim();
+    if (!holdnavn || activeHoldNames.has(holdnavn)) continue;
+    await updateAirtableRecord(TABLE_FAMILIELOEB, rec.id, {
+      [medlemmerField]: "",
+    });
+  }
+
   return infos;
 }
 
-function compareHoldNames(a: string, b: string): number {
-  const num = (name: string) => {
-    const match = name.match(/\d+/);
-    return match ? parseInt(match[0], 10) : 0;
-  };
-  return num(a) - num(b) || a.localeCompare(b, "da");
+export type ManualFamilyRaceHold = {
+  holdnavn: string;
+  families: Array<{ familie: string; members: Array<{ navn: string; alder: number | null }> }>;
+};
+
+export async function syncFamilieloebFromManualHolds(
+  holds: ManualFamilyRaceHold[]
+): Promise<FamilyRaceInfo[]> {
+  const fullHolds: FamilyRaceHold[] = holds.map((hold) => ({
+    holdnavn: hold.holdnavn,
+    families: hold.families,
+    count: hold.families.reduce((sum, family) => sum + family.members.length, 0),
+    childAgeBuckets: new Set<string>(),
+  }));
+  return writeFamilieloebHoldsToAirtable(fullHolds);
+}
+
+export async function syncFamilieloebAssignments(): Promise<FamilyRaceInfo[]> {
+  await consolidateFamilieloebFamiliesIn2026();
+  const holds = await getFamilyRaceHoldsFrom2026HoldField();
+  if (holds.length === 0) {
+    throw new Error(
+      "Ingen familieløb-hold fundet i 2026-tabellen. Udfyld feltet «Familieløb» med Hold 1, Hold 2 osv."
+    );
+  }
+  return writeFamilieloebHoldsToAirtable(holds);
+}
+
+export async function setFamilieloebHoldForFamily(
+  familyName: string,
+  holdnavn: string
+): Promise<void> {
+  const normalizedFamily = normalizeFamilieKey(familyName);
+  const normalizedHold = holdnavn.trim().match(/^Hold\s+(\d+)/i)
+    ? `Hold ${holdnavn.trim().match(/^Hold\s+(\d+)/i)![1]}`
+    : holdnavn.trim();
+  const records = await fetchTableRecords(TABLE_2026);
+  const fieldNames = await getTableFieldNames(TABLE_2026);
+  const holdField = resolveFieldName(fieldNames, RECORD_2026_FAMILIELOEB_HOLD_FIELDS);
+
+  for (const rec of records) {
+    const familie = getFieldValue(rec, FAMILIE_FIELDS)?.trim();
+    if (!familie || normalizeFamilieKey(familie) !== normalizedFamily) continue;
+    await updateAirtableRecord(TABLE_2026, rec.id, {
+      [holdField]: normalizedHold,
+    });
+  }
 }
 
 async function readFamilieloebHoldsFromAirtable(): Promise<FamilyRaceHoldView[]> {
@@ -1513,13 +1685,30 @@ export async function getFamilieloebInfoByEmail(email: string): Promise<FamilyRa
   }
   if (!familyName) return null;
 
-  const holds = await readFamilieloebHoldsFromAirtable();
-  for (const hold of holds) {
-    if (hold.membersText.toLowerCase().includes(`${familyName.toLowerCase()}:`)) {
-      return { holdnavn: hold.holdnavn, membersText: hold.membersText };
+  const familyKey = normalizeFamilieKey(familyName);
+  const familyMembers = records.filter((rec) => {
+    const familie = getFieldValue(rec, FAMILIE_FIELDS);
+    return familie && normalizeFamilieKey(familie) === familyKey;
+  });
+  const holdnavn = getCanonicalHoldForFamilyMembers(familyMembers);
+  if (!holdnavn) {
+    const holds = await readFamilieloebHoldsFromAirtable();
+    for (const hold of holds) {
+      if (hold.membersText.toLowerCase().includes(`${familyName.toLowerCase()}:`)) {
+        return { holdnavn: hold.holdnavn, membersText: hold.membersText };
+      }
     }
+    return null;
   }
-  return null;
+
+  const holds = await readFamilieloebHoldsFromAirtable();
+  const hold = holds.find((item) => item.holdnavn === holdnavn);
+  if (hold) return { holdnavn: hold.holdnavn, membersText: hold.membersText };
+
+  const familyHolds = await getFamilyRaceHoldsFrom2026HoldField();
+  const match = familyHolds.find((item) => item.holdnavn === holdnavn);
+  if (!match) return { holdnavn, membersText: "" };
+  return { holdnavn, membersText: holdMembersText(match) };
 }
 
 export async function getAllFamilieloebHolds(): Promise<FamilyRaceHoldView[]> {
@@ -1555,11 +1744,11 @@ export async function moveFamilyBetweenFamilieloebHolds(
   const fromFamilies = parseFamilyRaceMembersText(getFieldValue(fromRec, FAMILIELOEB_MEDLEMMER_FIELDS) || "");
   const toFamilies = parseFamilyRaceMembersText(getFieldValue(toRec, FAMILIELOEB_MEDLEMMER_FIELDS) || "");
 
-  const idx = fromFamilies.findIndex((f) => f.familyName.toLowerCase() === familyName.toLowerCase());
+  const idx = fromFamilies.findIndex((f) => familieKeysMatch(f.familyName, familyName));
   if (idx === -1) return readFamilieloebHoldsFromAirtable();
 
   const [moved] = fromFamilies.splice(idx, 1);
-  if (!toFamilies.some((f) => f.familyName.toLowerCase() === moved.familyName.toLowerCase())) {
+  if (!toFamilies.some((f) => familieKeysMatch(f.familyName, moved.familyName))) {
     toFamilies.push(moved);
   }
 
@@ -1572,6 +1761,8 @@ export async function moveFamilyBetweenFamilieloebHolds(
     [holdField]: toHold,
     [medlemmerField]: buildFamilyRaceMembersText(toFamilies),
   });
+
+  await setFamilieloebHoldForFamily(familyName, toHold);
 
   return readFamilieloebHoldsFromAirtable();
 }

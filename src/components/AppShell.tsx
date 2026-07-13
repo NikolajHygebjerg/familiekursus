@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
@@ -46,7 +47,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
-        <span className="text-sm text-slate-600">{displayName}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <Image
+            src="/images/logo.jpg"
+            alt="Familiekursus"
+            width={32}
+            height={32}
+            className="shrink-0 rounded-lg"
+          />
+          <span className="truncate text-sm text-slate-600">{displayName}</span>
+        </div>
         <button
           onClick={() => {
             logout();
