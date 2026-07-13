@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Familiekursus sang</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0f172a;
+        color: #f8fafc;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+
+      main {
+        min-height: 100vh;
+        padding: 4vh 5vw;
+      }
+
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: clamp(2rem, 5vw, 4rem);
+        line-height: 1.1;
+      }
+
+      .subtitle {
+        margin: 0 0 2rem;
+        font-size: clamp(1rem, 2.5vw, 1.75rem);
+        color: #cbd5e1;
+      }
+
+      .stanza {
+        margin: 0 0 2rem;
+        font-size: clamp(1.35rem, 3.2vw, 2.5rem);
+        line-height: 1.45;
+        white-space: pre-line;
+      }
+
+      #canvas-wrapper {
+        display: flex;
+        justify-content: center;
+        padding-top: 1rem;
+      }
+
+      canvas {
+        display: block;
+        max-width: 100%;
+        height: auto !important;
+        background: #fff;
+        border-radius: 12px;
+      }
+
+      #status,
+      #error {
+        font-size: clamp(1.1rem, 2.5vw, 1.75rem);
+        color: #cbd5e1;
+      }
+
+      #error {
+        display: none;
+        color: #fecaca;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="status">Henter sang...</div>
+      <div id="content" hidden>
+        <h1 id="title"></h1>
+        <p id="subtitle" class="subtitle" hidden></p>
+        <div id="text-content"></div>
+        <div id="canvas-wrapper" hidden>
+          <canvas id="canvas"></canvas>
+        </div>
+      </div>
+      <p id="error"></p>
+    </main>
+    <script type="module">
+      import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+
+      const params = new URLSearchParams(location.search);
+      const songId = params.get("id");
+      const status = document.getElementById("status");
+      const content = document.getElementById("content");
+      const error = document.getElementById("error");
+      const titleEl = document.getElementById("title");
+      const subtitleEl = document.getElementById("subtitle");
+      const textContent = document.getElementById("text-content");
+      const canvasWrapper = document.getElementById("canvas-wrapper");
+      const canvas = document.getElementById("canvas");
+
+      function showError(message) {
+        status.hidden = true;
+        content.hidden = true;
+        error.style.display = "block";
+        error.textContent = message;
+      }
+
+      function renderTextSong(song) {
+        titleEl.textContent = song.title;
+        if (song.subtitle) {
+          subtitleEl.textContent = song.subtitle;
+          subtitleEl.hidden = false;
+        }
+        textContent.innerHTML = "";
+        for (const stanza of song.stanzas || []) {
+          const p = document.createElement("p");
+          p.className = "stanza";
+          p.textContent = stanza.join("\n");
+          textContent.appendChild(p);
+        }
+      }
+
+      async function renderPdfSong(song) {
+        titleEl.textContent = song.title;
+        canvasWrapper.hidden = false;
+        const pdf = await pdfjsLib.getDocument("/sange/familehoejskole-sange.pdf").promise;
+        const page = await pdf.getPage(song.page);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const containerWidth = Math.max(document.body.clientWidth - 48, 640);
+        const scale = containerWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale });
+        const context = canvas.getContext("2d");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: context, viewport }).promise;
+      }
+
+      async function loadSong() {
+        if (!songId) {
+          showError("Ingen sang valgt.");
+          return;
+        }
+
+        const response = await fetch(`/api/cast/song?id=${encodeURIComponent(songId)}`);
+        if (!response.ok) {
+          showError("Kunne ikke hente sangen.");
+          return;
+        }
+
+        const song = await response.json();
+        status.hidden = true;
+        content.hidden = false;
+
+        if (song.type === "pdf") {
+          await renderPdfSong(song);
+          return;
+        }
+
+        renderTextSong(song);
+      }
+
+      loadSong().catch(() => showError("Kunne ikke vise sangen."));
+    </script>
+  </body>
+</html>

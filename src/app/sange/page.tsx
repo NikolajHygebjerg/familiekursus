@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import CastSongButton from "@/components/CastSongButton";
 import { HOJSKOLE_PDF_PATH, HOJSKOLESANGE } from "@/data/hojskolesange";
 import { LEJRBALSSANGE } from "@/data/lejrbalssange";
 import { SANGE } from "@/data/sange";
@@ -29,6 +30,7 @@ function SongCard({
   subtitle,
   stanzas,
   id,
+  songId,
   showBackToToc,
   tocId = LEJRBAL_TOC_ID,
 }: {
@@ -36,6 +38,7 @@ function SongCard({
   subtitle?: string;
   stanzas: string[][];
   id?: string;
+  songId?: string;
   showBackToToc?: boolean;
   tocId?: string;
 }) {
@@ -51,7 +54,10 @@ function SongCard({
             <span className="mt-0.5 block text-sm font-normal text-slate-500">{subtitle}</span>
           )}
         </h2>
-        {showBackToToc && <BackToTocLink tocId={tocId} />}
+        <div className="flex shrink-0 items-start gap-1">
+          {songId && <CastSongButton songId={songId} label={`Cast ${title}`} />}
+          {showBackToToc && <BackToTocLink tocId={tocId} />}
+        </div>
       </div>
       <div className="space-y-5 px-4 py-5">
         {stanzas.map((stanza, index) => (
@@ -71,11 +77,13 @@ function PdfSongCard({
   title,
   page,
   id,
+  songId,
   showBackToToc,
 }: {
   title: string;
   page: number;
   id: string;
+  songId: string;
   showBackToToc?: boolean;
 }) {
   const viewerUrl = `/sange/viewer.html?page=${page}`;
@@ -88,7 +96,10 @@ function PdfSongCard({
     >
       <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-amber-50 px-4 py-3">
         <h2 className="min-w-0 text-lg font-semibold text-slate-800">{title}</h2>
-        {showBackToToc && <BackToTocLink tocId={HOJSKOLE_TOC_ID} />}
+        <div className="flex shrink-0 items-start gap-1">
+          <CastSongButton songId={songId} label={`Cast ${title}`} />
+          {showBackToToc && <BackToTocLink tocId={HOJSKOLE_TOC_ID} />}
+        </div>
       </div>
       <div className="bg-slate-50">
         <iframe
@@ -113,7 +124,9 @@ export default function SangePage() {
     <main className="mx-auto max-w-2xl px-4 py-6">
       <header className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-slate-800">Sange</h1>
-        <p className="mt-2 text-sm text-slate-600">Sangtekster til familiekursus</p>
+        <p className="mt-2 text-sm text-slate-600">
+          Sangtekster til familiekursus. Tryk cast-ikonet for at vise en sang på TV.
+        </p>
       </header>
 
       <div className="mb-6 flex rounded-xl border border-slate-200 bg-slate-100 p-1">
@@ -154,8 +167,13 @@ export default function SangePage() {
 
       {tab === "familiekursus" && (
         <div className="space-y-6">
-          {SANGE.map((song) => (
-            <SongCard key={song.title} title={song.title} stanzas={song.stanzas} />
+          {SANGE.map((song, index) => (
+            <SongCard
+              key={song.title}
+              title={song.title}
+              stanzas={song.stanzas}
+              songId={`familiekursus-${index + 1}`}
+            />
           ))}
         </div>
       )}
@@ -183,6 +201,7 @@ export default function SangePage() {
             <SongCard
               key={song.id}
               id={song.id}
+              songId={song.id}
               title={song.title}
               subtitle={song.artist}
               stanzas={song.stanzas}
@@ -214,6 +233,7 @@ export default function SangePage() {
             <PdfSongCard
               key={song.id}
               id={song.id}
+              songId={song.id}
               title={song.title}
               page={song.page}
               showBackToToc

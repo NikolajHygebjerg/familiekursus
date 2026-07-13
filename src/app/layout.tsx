@@ -3,6 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { FamilyProvider } from "@/context/FamilyContext";
 import AppShell from "@/components/AppShell";
+import CastScriptLoader from "@/components/CastScriptLoader";
 
 export const metadata: Metadata = {
   title: "Familiekursus",
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-slate-50 antialiased">
         <AuthProvider>
           <FamilyProvider>
+            <CastScriptLoader />
             <AppShell>{children}</AppShell>
           </FamilyProvider>
         </AuthProvider>
