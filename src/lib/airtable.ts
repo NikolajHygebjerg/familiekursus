@@ -1464,7 +1464,7 @@ function normalizeFamilieKey(familie: string): string {
 }
 
 function pickFamilyHoldFromVotes(holdVotes: Map<string, number>): string | null {
-  const sorted = [...holdVotes.entries()].sort(
+  const sorted = Array.from(holdVotes.entries()).sort(
     (a, b) => b[1] - a[1] || compareHoldNames(a[0], b[0])
   );
   return sorted[0]?.[0] ?? null;
@@ -1506,7 +1506,7 @@ export async function consolidateFamilieloebFamiliesIn2026(): Promise<number> {
   const families = await getFamiliesFrom2026Records(records);
 
   let updated = 0;
-  for (const { members } of families.values()) {
+  for (const { members } of Array.from(families.values())) {
     const canonicalHold = getCanonicalHoldForFamilyMembers(members);
     if (!canonicalHold) continue;
 
@@ -1527,7 +1527,7 @@ async function getFamilyRaceHoldsFrom2026HoldField(): Promise<FamilyRaceHold[]> 
   const families = await getFamiliesFrom2026Records(records);
   const byHold = new Map<string, Map<string, FamilyRaceMember[]>>();
 
-  for (const { familie, members } of families.values()) {
+  for (const { familie, members } of Array.from(families.values())) {
     const canonicalHold = getCanonicalHoldForFamilyMembers(members);
     if (!canonicalHold) continue;
 
