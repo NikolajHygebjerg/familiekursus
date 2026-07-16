@@ -34,6 +34,8 @@ const WORKSHOP_LABELS: Record<string, string> = {
   workshop4: "Workshop 4",
   voksen: "Workshop Forældre (Voksen)",
   aftengrupper: "Aftengrupper",
+  gyserløb: "Gyserløb",
+  sheltertur: "Sheltertur",
 };
 
 const WORKSHOP_TABS = [
@@ -43,7 +45,11 @@ const WORKSHOP_TABS = [
   "workshop4",
   "voksen",
   "aftengrupper",
+  "gyserløb",
+  "sheltertur",
 ] as const;
+
+const ACTIVITY_TABS = new Set(["aftengrupper", "gyserløb", "sheltertur"]);
 
 export default function AntalPage() {
   const { isKursusleder } = useFamily();
@@ -123,7 +129,7 @@ export default function AntalPage() {
           <p className="mt-1 text-slate-600">Antal tilmeldte pr. workshop-valg.</p>
           {isKursusleder && (
             <p className="mt-2 text-sm text-amber-700">
-              Tryk på en workshop eller aftengruppe for at se deltagere grupperet efter familie.
+              Tryk på en workshop, aftengruppe, gyserløb eller sheltertur for at se deltagere grupperet efter familie.
             </p>
           )}
         </header>
@@ -189,7 +195,11 @@ export default function AntalPage() {
             <p className="text-slate-500">
               {selectedWorkshop === "aftengrupper"
                 ? "Ingen tilmeldinger fundet til aftengrupper."
-                : "Ingen tilmeldinger fundet for denne workshop."}
+                : selectedWorkshop === "gyserløb"
+                  ? "Ingen tilmeldinger fundet til gyserløb."
+                  : selectedWorkshop === "sheltertur"
+                    ? "Ingen tilmeldinger fundet til sheltertur."
+                    : "Ingen tilmeldinger fundet for denne workshop."}
             </p>
           )}
 
@@ -254,7 +264,7 @@ export default function AntalPage() {
               </button>
             </div>
 
-            {!loadingParticipants && !participantError && selectedWorkshop !== "aftengrupper" && myRoles.length > 0 && (
+            {!loadingParticipants && !participantError && !ACTIVITY_TABS.has(selectedWorkshop) && myRoles.length > 0 && (
               <p className="mb-4 text-sm font-medium text-amber-700">
                 Din rolle:{" "}
                 {myRoles.includes("alle")
@@ -265,7 +275,7 @@ export default function AntalPage() {
               </p>
             )}
 
-            {!loadingParticipants && !participantError && selectedWorkshop !== "aftengrupper" && (
+            {!loadingParticipants && !participantError && !ACTIVITY_TABS.has(selectedWorkshop) && (
               <dl className="mb-6 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -325,7 +335,8 @@ export default function AntalPage() {
                       {family.members.map((member) => (
                         <li key={`${family.email}-${member.navn}`} className="text-sm text-slate-700">
                           • {member.navn}
-                          {member.alder ? ` (${member.alder})` : ""}
+                          {member.type ? ` (${member.type})` : ""}
+                          {member.alder ? ` · ${member.alder}` : ""}
                         </li>
                       ))}
                     </ul>

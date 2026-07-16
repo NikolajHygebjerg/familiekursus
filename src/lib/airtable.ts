@@ -545,6 +545,58 @@ export async function getAftengruppeParticipantsGrouped(
     }));
 }
 
+function isActivityRegistered(value: string | null): boolean {
+  return Boolean(value?.trim());
+}
+
+export async function getActivityCount(fieldKey: ActivityFieldKey): Promise<number> {
+  const records = await fetchTableRecords(getYearTableId(getCurrentYear()));
+  let count = 0;
+  for (const record of records) {
+    const val = getFieldValue(record, ACTIVITY_FIELD_OPTIONS[fieldKey]);
+    if (isActivityRegistered(val)) count += 1;
+  }
+  return count;
+}
+
+export async function getActivityParticipantsGrouped(
+  fieldKey: ActivityFieldKey
+): Promise<WorkshopFamilyGroup[]> {
+  const records = await fetchTableRecords(getYearTableId(getCurrentYear()));
+  const byEmail = new Map<string, WorkshopFamilyGroup>();
+
+  for (const record of records) {
+    const val = getFieldValue(record, ACTIVITY_FIELD_OPTIONS[fieldKey]);
+    if (!isActivityRegistered(val)) continue;
+
+    const email = getEmailFromRecord(record)?.trim().toLowerCase() || "ukendt";
+    const navn = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
+    const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
+    const alder = formatParticipantAlder(type, getFieldValue(record, ALDER_FIELD_OPTIONS));
+    const familie = getFieldValue(record, FAMILIE_FIELDS);
+
+    let group = byEmail.get(email);
+    if (!group) {
+      group = { email, familie, members: [] };
+      byEmail.set(email, group);
+    }
+    if (familie && !group.familie) group.familie = familie;
+
+    group.members.push({ navn, alder, type });
+  }
+
+  return Array.from(byEmail.values())
+    .sort((a, b) => {
+      const labelA = (a.familie || a.email).toLocaleLowerCase("da");
+      const labelB = (b.familie || b.email).toLocaleLowerCase("da");
+      return labelA.localeCompare(labelB, "da");
+    })
+    .map((group) => ({
+      ...group,
+      members: group.members.sort((a, b) => a.navn.localeCompare(b.navn, "da")),
+    }));
+}
+
 export async function getWorkshopCounts(
   workshopKey: keyof typeof WORKSHOP_FIELDS,
   withParticipants = false

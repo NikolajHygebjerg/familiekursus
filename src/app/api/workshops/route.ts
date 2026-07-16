@@ -6,6 +6,9 @@ import {
   getAdminWorkshopRoles,
   getAftengrupperOptionsDetailed,
   getAftengruppeParticipantsGrouped,
+  getActivityCount,
+  getActivityParticipantsGrouped,
+  type ActivityFieldKey,
 } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
@@ -18,11 +21,26 @@ const VALID_WORKSHOPS = [
   "workshop4",
   "voksen",
   "aftengrupper",
+  "gyserløb",
+  "sheltertur",
 ] as const;
 type WorkshopKey = (typeof VALID_WORKSHOPS)[number];
 
+const ACTIVITY_OPTION_FIELDS: Record<string, ActivityFieldKey> = {
+  Gyserløb: "gyserløb",
+  "Uden overnatning": "sheltertur",
+  "Med overnatning": "sheltertur_med_overnatning",
+};
+
 function isValidWorkshop(workshop: string | null): workshop is WorkshopKey {
   return !!workshop && VALID_WORKSHOPS.includes(workshop as WorkshopKey);
+}
+
+function resolveActivityField(workshop: "gyserløb" | "sheltertur", option: string): ActivityFieldKey | null {
+  if (workshop === "gyserløb") {
+    return option === "Gyserløb" ? "gyserløb" : null;
+  }
+  return ACTIVITY_OPTION_FIELDS[option] ?? null;
 }
 
 export async function GET(request: Request) {
@@ -36,7 +54,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Ugyldig workshop. Brug: workshop1, workshop2, workshop3, workshop4, voksen eller aftengrupper",
+            "Ugyldig workshop. Brug: workshop1, workshop2, workshop3, workshop4, voksen, aftengrupper, gyserløb eller sheltertur",
         },
         { status: 400 }
       );
@@ -56,6 +74,15 @@ export async function GET(request: Request) {
         return NextResponse.json({ option, families, backend: null, roles: [] });
       }
 
+      if (workshop === "gyserløb" || workshop === "sheltertur") {
+        const fieldKey = resolveActivityField(workshop, option);
+        if (!fieldKey) {
+          return NextResponse.json({ error: "Ugyldig aktivitet" }, { status: 400 });
+        }
+        const families = await getActivityParticipantsGrouped(fieldKey);
+        return NextResponse.json({ option, families, backend: null, roles: [] });
+      }
+
       const [families, backend] = await Promise.all([
         getWorkshopParticipantsGrouped(workshop, option),
         getWorkshopBackendInfo(option),
@@ -70,6 +97,22 @@ export async function GET(request: Request) {
       return NextResponse.json(
         options.map((option) => ({ name: option.name, count: option.current }))
       );
+    }
+
+    if (workshop === "gyserløb") {
+      const count = await getActivityCount("gyserløb");
+      return NextResponse.json([{ name: "Gyserløb", count }]);
+    }
+
+    if (workshop === "sheltertur") {
+      const [udenCount, medCount] = await Promise.all([
+        getActivityCount("sheltertur"),
+        getActivityCount("sheltertur_med_overnatning"),
+      ]);
+      return NextResponse.json([
+        { name: "Uden overnatning", count: udenCount },
+        { name: "Med overnatning", count: medCount },
+      ]);
     }
 
     const counts = await getWorkshopCounts(workshop);
