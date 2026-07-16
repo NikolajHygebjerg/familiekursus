@@ -36,6 +36,7 @@ const WORKSHOP_LABELS: Record<string, string> = {
   aftengrupper: "Aftengrupper",
   gyserløb: "Gyserløb",
   sheltertur: "Sheltertur",
+  forhaandstilmelding: "Forhåndstilmeldinger",
 };
 
 const WORKSHOP_TABS = [
@@ -47,9 +48,25 @@ const WORKSHOP_TABS = [
   "aftengrupper",
   "gyserløb",
   "sheltertur",
+  "forhaandstilmelding",
 ] as const;
 
 const ACTIVITY_TABS = new Set(["aftengrupper", "gyserløb", "sheltertur"]);
+
+interface ForhaandstilmeldingEntry {
+  id: string;
+  email: string;
+  navn: string;
+  antalVoksne: number;
+  antalBorn: number;
+}
+
+interface ForhaandstilmeldingSummary {
+  families: number;
+  voksne: number;
+  born: number;
+  total: number;
+}
 
 export default function AntalPage() {
   const { isKursusleder } = useFamily();
@@ -64,6 +81,11 @@ export default function AntalPage() {
   const [myRoles, setMyRoles] = useState<("underviser" | "hjaelper" | "alle")[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantError, setParticipantError] = useState<string | null>(null);
+  const [forhaandstilmeldinger, setForhaandstilmeldinger] = useState<ForhaandstilmeldingEntry[]>([]);
+  const [forhaandSummary, setForhaandSummary] = useState<ForhaandstilmeldingSummary | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -73,6 +95,33 @@ export default function AntalPage() {
     setWorkshopBackend(null);
     setMyRoles([]);
     setParticipantError(null);
+    setForhaandstilmeldinger([]);
+    setForhaandSummary(null);
+    setExportMessage(null);
+    setExportError(null);
+
+    if (selectedWorkshop === "forhaandstilmelding") {
+      if (!isKursusleder || !email) {
+        setLoading(false);
+        return;
+      }
+      fetch(`/api/forhaandstilmelding?list=1&email=${encodeURIComponent(email)}`)
+        .then((res) => {
+          if (!res.ok) {
+            return res.json().then((body) => {
+              throw new Error(body.error || res.statusText);
+            });
+          }
+          return res.json();
+        })
+        .then((body: { entries: ForhaandstilmeldingEntry[]; summary: ForhaandstilmeldingSummary }) => {
+          setForhaandstilmeldinger(body.entries ?? []);
+          setForhaandSummary(body.summary ?? null);
+        })
+        .catch((err) => setError(err.message))
+        .finally(() => setLoading(false));
+      return;
+    }
 
     fetch(`/api/workshops?workshop=${selectedWorkshop}`)
       .then((res) => {
@@ -82,7 +131,28 @@ export default function AntalPage() {
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [selectedWorkshop]);
+  }, [selectedWorkshop, isKursusleder, email]);
+
+  async function handleExportForhaandstilmelding() {
+    if (!email) return;
+    setExporting(true);
+    setExportMessage(null);
+    setExportError(null);
+    try {
+      const res = await fetch("/api/forhaandstilmelding/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Eksport fejlede");
+      setExportMessage(`Excel-ark sendt til ${email} (${data.count} forhåndstilmeldinger).`);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Eksport fejlede");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function loadParticipants(optionName: string) {
     if (!isKursusleder || !email) return;
@@ -191,7 +261,88 @@ export default function AntalPage() {
             </div>
           )}
 
-          {!loading && !error && data.length === 0 && (
+          {!loading && !error && selectedWorkshop === "forhaandstilmelding" && (
+            <>
+              {forhaandSummary && (
+                <div className="mb-4 grid gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg bg-amber-50 px-4 py-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">Familier</p>
+                    <p className="text-2xl font-bold text-amber-600">{forhaandSummary.families}</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">Voksne</p>
+                    <p className="text-2xl font-bold text-slate-800">{forhaandSummary.voksne}</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">Børn</p>
+                    <p className="text-2xl font-bold text-slate-800">{forhaandSummary.born}</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">I alt</p>
+                    <p className="text-2xl font-bold text-slate-800">{forhaandSummary.total}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handleExportForhaandstilmelding()}
+                  disabled={exporting || forhaandstilmeldinger.length === 0}
+                  className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {exporting ? "Sender..." : "Eksporter"}
+                </button>
+                <p className="text-sm text-slate-500">
+                  Sender Excel-ark til {email} med navn, email, antal voksne og børn.
+                </p>
+              </div>
+
+              {exportMessage && (
+                <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+                  {exportMessage}
+                </div>
+              )}
+              {exportError && (
+                <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {exportError}
+                </div>
+              )}
+
+              {forhaandstilmeldinger.length === 0 ? (
+                <p className="text-slate-500">Ingen forhåndstilmeldinger endnu.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[36rem] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2 pr-4 font-medium">Navn</th>
+                        <th className="py-2 pr-4 font-medium">Email</th>
+                        <th className="py-2 pr-4 font-medium">Voksne</th>
+                        <th className="py-2 pr-4 font-medium">Børn</th>
+                        <th className="py-2 font-medium">I alt</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {forhaandstilmeldinger.map((entry) => (
+                        <tr key={entry.id}>
+                          <td className="py-3 pr-4 font-medium text-slate-800">{entry.navn}</td>
+                          <td className="py-3 pr-4 text-slate-600">{entry.email}</td>
+                          <td className="py-3 pr-4 text-slate-700">{entry.antalVoksne}</td>
+                          <td className="py-3 pr-4 text-slate-700">{entry.antalBorn}</td>
+                          <td className="py-3 font-semibold text-slate-800">
+                            {entry.antalVoksne + entry.antalBorn}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {!loading && !error && selectedWorkshop !== "forhaandstilmelding" && data.length === 0 && (
             <p className="text-slate-500">
               {selectedWorkshop === "aftengrupper"
                 ? "Ingen tilmeldinger fundet til aftengrupper."
@@ -203,7 +354,7 @@ export default function AntalPage() {
             </p>
           )}
 
-          {!loading && !error && data.length > 0 && (
+          {!loading && !error && selectedWorkshop !== "forhaandstilmelding" && data.length > 0 && (
             <>
               <div className="mb-4 flex items-center justify-between rounded-lg bg-amber-50 px-4 py-2">
                 <span className="font-medium text-slate-700">I alt tilmeldte</span>

@@ -12,6 +12,7 @@ const TABLE_WORKSHOPOVERSIGT = "Workshopoversigt";
 const TABLE_WORKSHOPBACKEND = "Workshopbackend";
 const TABLE_FAMILIELOEB = "Familieløbet";
 const TABLE_MOED_OS = "Mød os";
+const TABLE_FORHAANDSTTILMELDING = "Forhåndstilmelding";
 const ALDERSGRUPPER_TABLE_NAMES = [
   "Aldersgrupper",
   "Børn i aldersgrupper",
@@ -3075,4 +3076,89 @@ export async function deleteMoedOsPerson(slug: string, isStaticPerson: boolean):
   if (recordId) {
     await deleteAirtableRecord(TABLE_MOED_OS, recordId);
   }
+}
+
+const FORHAANDSTTILMELDING_EMAIL_FIELDS = ["Email", "email", "A Email"];
+const FORHAANDSTTILMELDING_NAVN_FIELDS = ["Familie", "Navn", "navn", "Name", "name"];
+const FORHAANDSTTILMELDING_VOKSNE_FIELDS = ["Antal voksne", "A Antal voksne", "Voksne"];
+const FORHAANDSTTILMELDING_BORN_FIELDS = ["Antal børn", "A Antal børn", "Børn", "Antal born"];
+
+export interface Forhaandstilmelding {
+  id: string;
+  email: string;
+  navn: string;
+  antalVoksne: number;
+  antalBorn: number;
+}
+
+function parseCountField(value: string | null): number {
+  if (!value?.trim()) return 0;
+  const n = parseInt(value.replace(",", ".").trim(), 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function recordToForhaandstilmelding(record: AirtableRecord): Forhaandstilmelding | null {
+  const email = getEmailFromRecord(record)?.trim().toLowerCase();
+  if (!email) return null;
+  return {
+    id: record.id,
+    email,
+    navn: getFieldValue(record, FORHAANDSTTILMELDING_NAVN_FIELDS) || email,
+    antalVoksne: parseCountField(getFieldValue(record, FORHAANDSTTILMELDING_VOKSNE_FIELDS)),
+    antalBorn: parseCountField(getFieldValue(record, FORHAANDSTTILMELDING_BORN_FIELDS)),
+  };
+}
+
+export async function getForhaandstilmeldingByEmail(email: string): Promise<Forhaandstilmelding | null> {
+  const records = await fetchTableRecords(TABLE_FORHAANDSTTILMELDING);
+  const normalized = email.trim().toLowerCase();
+  for (const record of records) {
+    const recEmail = getEmailFromRecord(record)?.trim().toLowerCase();
+    if (recEmail !== normalized) continue;
+    return recordToForhaandstilmelding(record);
+  }
+  return null;
+}
+
+export async function getAllForhaandstilmeldinger(): Promise<Forhaandstilmelding[]> {
+  const records = await fetchTableRecords(TABLE_FORHAANDSTTILMELDING);
+  const result: Forhaandstilmelding[] = [];
+  for (const record of records) {
+    const entry = recordToForhaandstilmelding(record);
+    if (entry && (entry.antalVoksne > 0 || entry.antalBorn > 0)) {
+      result.push(entry);
+    }
+  }
+  return result.sort((a, b) => a.navn.localeCompare(b.navn, "da"));
+}
+
+export async function upsertForhaandstilmelding(
+  email: string,
+  navn: string,
+  antalVoksne: number,
+  antalBorn: number
+): Promise<Forhaandstilmelding> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await getForhaandstilmeldingByEmail(normalizedEmail);
+  const fieldNames = await getTableFieldNames(TABLE_FORHAANDSTTILMELDING);
+  const fields: Record<string, unknown> = {
+    [resolveFieldName(fieldNames, FORHAANDSTTILMELDING_EMAIL_FIELDS)]: normalizedEmail,
+    [resolveFieldName(fieldNames, FORHAANDSTTILMELDING_NAVN_FIELDS)]: navn.trim() || normalizedEmail,
+    [resolveFieldName(fieldNames, FORHAANDSTTILMELDING_VOKSNE_FIELDS)]: antalVoksne,
+    [resolveFieldName(fieldNames, FORHAANDSTTILMELDING_BORN_FIELDS)]: antalBorn,
+  };
+
+  if (existing) {
+    await updateAirtableRecord(TABLE_FORHAANDSTTILMELDING, existing.id, fields);
+    return { ...existing, navn: String(fields[resolveFieldName(fieldNames, FORHAANDSTTILMELDING_NAVN_FIELDS)]), antalVoksne, antalBorn };
+  }
+
+  const created = await createAirtableRecord(TABLE_FORHAANDSTTILMELDING, fields);
+  return {
+    id: created.id,
+    email: normalizedEmail,
+    navn: String(fields[resolveFieldName(fieldNames, FORHAANDSTTILMELDING_NAVN_FIELDS)]),
+    antalVoksne,
+    antalBorn,
+  };
 }
