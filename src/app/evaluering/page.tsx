@@ -6,7 +6,22 @@ import { useAuth } from "@/context/AuthContext";
 const EVALUERING_FORM_URL = "https://forms.cloud.microsoft/e/sFVNEvzDHC";
 const EVALUERING_EMBED_URL = `${EVALUERING_FORM_URL}?embed=true`;
 
-type Tab = "evaluering" | "forhaandstilmelding";
+const BILLEUPLOAD_PAGE_URL =
+  process.env.NEXT_PUBLIC_BILLEUPLOAD_URL ||
+  "https://brandbjerghojskole.sharepoint.com/:f:/s/kk/IgACD7McEBHkRYxXiB4xyR4AATCi-_Wb1QdfkHyyz-gYT2I?nav=MzYyNDI1ZDktMmM4Zi00ZTMzLThjN2EtMzFlMzkyYWE0NzY0";
+
+function getBilleduploadEmbedUrl(pageUrl: string): string {
+  if (pageUrl.includes("forms.cloud.microsoft") || pageUrl.includes("forms.office.com")) {
+    return pageUrl.includes("embed=true")
+      ? pageUrl
+      : `${pageUrl}${pageUrl.includes("?") ? "&" : "?"}embed=true`;
+  }
+  return pageUrl;
+}
+
+const BILLEUPLOAD_EMBED_URL = getBilleduploadEmbedUrl(BILLEUPLOAD_PAGE_URL);
+
+type Tab = "evaluering" | "forhaandstilmelding" | "billedupload";
 
 export default function EvalueringPage() {
   const { email, familyName } = useAuth();
@@ -80,7 +95,7 @@ export default function EvalueringPage() {
         <button
           type="button"
           onClick={() => setTab("evaluering")}
-          className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+          className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-medium transition-colors sm:px-3 sm:text-sm ${
             tab === "evaluering"
               ? "bg-white text-slate-800 shadow-sm"
               : "text-slate-600 hover:text-slate-800"
@@ -91,13 +106,24 @@ export default function EvalueringPage() {
         <button
           type="button"
           onClick={() => setTab("forhaandstilmelding")}
-          className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+          className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-medium transition-colors sm:px-3 sm:text-sm ${
             tab === "forhaandstilmelding"
               ? "bg-white text-slate-800 shadow-sm"
               : "text-slate-600 hover:text-slate-800"
           }`}
         >
           Forhåndstilmelding
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("billedupload")}
+          className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-medium transition-colors sm:px-3 sm:text-sm ${
+            tab === "billedupload"
+              ? "bg-white text-slate-800 shadow-sm"
+              : "text-slate-600 hover:text-slate-800"
+          }`}
+        >
+          Billedupload
         </button>
       </div>
 
@@ -197,6 +223,32 @@ export default function EvalueringPage() {
             </form>
           )}
         </section>
+      )}
+
+      {tab === "billedupload" && (
+        <>
+          <p className="mb-4 text-center text-sm leading-relaxed text-slate-600">
+            Upload billeder fra familiekursus. Skriv gerne jeres navn, så vi kan se hvem der har
+            uploadet.
+          </p>
+          <a
+            href={BILLEUPLOAD_PAGE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-4 block text-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline"
+          >
+            Åbn upload i ny fane (hvis indlejring ikke virker)
+          </a>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <iframe
+              src={BILLEUPLOAD_EMBED_URL}
+              title="Billedupload – Familiekursus"
+              className="h-[75vh] min-h-[32rem] w-full border-0"
+              loading="lazy"
+              allow="camera *; microphone *"
+            />
+          </div>
+        </>
       )}
     </main>
   );
