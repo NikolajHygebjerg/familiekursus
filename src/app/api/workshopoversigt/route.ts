@@ -4,17 +4,27 @@ import {
   getAftengrupperOptionsDetailed,
   getNamesFromYearTableForEmail,
   getYearTableFieldNames,
+  type ActivityFieldKey,
 } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-type FieldKey = "aftengrupper" | "gyserløb" | "sheltertur";
+const VALID_FIELDS: ActivityFieldKey[] = [
+  "aftengrupper",
+  "gyserløb",
+  "sheltertur",
+  "sheltertur_med_overnatning",
+];
+
+function isValidField(field: string): field is ActivityFieldKey {
+  return VALID_FIELDS.includes(field as ActivityFieldKey);
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const field = searchParams.get("field") as FieldKey | null;
+    const field = searchParams.get("field");
     const options = searchParams.get("options");
     const names = searchParams.get("names");
     const debug = searchParams.get("debug");
@@ -32,7 +42,7 @@ export async function GET(request: Request) {
       const nameList = await getNamesFromYearTableForEmail(email, q || undefined);
       return NextResponse.json(nameList);
     }
-    if (!field || !["aftengrupper", "gyserløb", "sheltertur"].includes(field)) {
+    if (!field || !isValidField(field)) {
       return NextResponse.json({ error: "Ugyldigt felt" }, { status: 400 });
     }
     const participants = await getWorkshopoversigtParticipants(field);
@@ -50,14 +60,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { field, navn, email, alder, valgtOption, type } = body as {
-      field: FieldKey;
+      field: ActivityFieldKey;
       navn: string;
       email?: string;
       alder?: string;
       valgtOption?: string;
       type?: string;
     };
-    if (!field || !["aftengrupper", "gyserløb", "sheltertur"].includes(field)) {
+    if (!field || !isValidField(field)) {
       return NextResponse.json({ error: "Ugyldigt felt" }, { status: 400 });
     }
     if (!navn?.trim()) {
@@ -79,7 +89,23 @@ export async function POST(request: Request) {
       }
       opts.valgtOption = selected;
     }
-    if ((field === "gyserløb" || field === "sheltertur") && alder) opts.alder = alder.trim();
+    if (
+      (field === "gyserløb" ||
+        field === "sheltertur" ||
+        field === "sheltertur_med_overnatning") &&
+      alder
+    ) {
+      opts.alder = alder.trim();
+    }
+    if (field === "sheltertur_med_overnatning" && type?.trim() === "Barn") {
+      const alderNum = parseInt((alder ?? "").trim(), 10);
+      if (isNaN(alderNum) || alderNum < 11) {
+        return NextResponse.json(
+          { error: "Man skal være mindst 11 år for at overnatte på sheltertur" },
+          { status: 400 }
+        );
+      }
+    }
     if (type?.trim()) opts.type = type.trim();
     await addToYearTableActivity(field, navn.trim(), email.trim(), opts);
     return NextResponse.json({ ok: true });

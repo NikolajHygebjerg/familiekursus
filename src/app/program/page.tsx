@@ -21,12 +21,19 @@ interface WorkshopDeltagerLinje {
   navne: string[];
 }
 
+interface AldersgruppeProgramLine {
+  gruppeNavn: string;
+  activity: string;
+  lokation?: string;
+}
+
 interface ProgramItemWithWorkshops extends Omit<ProgramItem, "workshopSlot"> {
   workshops?: string[];
   lokation?: string;
   workshopDeltagerLinjer?: WorkshopDeltagerLinje[];
   workshopSlot?: "workshop1" | "workshop2" | "workshop3" | "workshop4" | "voksen" | "aftengrupper" | "gyserløb" | "sheltertur";
   aldersgrupperItem?: boolean;
+  aldersgruppeLinjer?: AldersgruppeProgramLine[];
 }
 
 interface DagProgramWithWorkshops {
@@ -192,6 +199,23 @@ function ProgramListItem({
               ))}
             </div>
           )}
+          {item.aldersgruppeLinjer && item.aldersgruppeLinjer.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {item.aldersgruppeLinjer.map((line, index) => (
+                <p key={`${line.gruppeNavn}-${index}`} className="text-sm text-slate-600">
+                  {line.gruppeNavn}
+                  {line.activity ? (
+                    <>
+                      : {line.activity}
+                      {line.lokation ? <LokationSuffix lokation={line.lokation} /> : null}
+                    </>
+                  ) : line.lokation ? (
+                    <LokationSuffix lokation={line.lokation} />
+                  ) : null}
+                </p>
+              ))}
+            </div>
+          )}
           {item.beskrivelse && (
             <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
               {item.beskrivelse}
@@ -242,6 +266,7 @@ export default function ProgramPage() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [programData, setProgramData] = useState<DagProgramWithWorkshops[] | null>(null);
   const [workshopLocations, setWorkshopLocations] = useState<Record<string, string>>({});
+  const [aldersgruppeLinjer, setAldersgruppeLinjer] = useState<AldersgruppeProgramLine[]>([]);
   const [programLoading, setProgramLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
   const [familieloebInfo, setFamilieloebInfo] = useState<{ holdnavn: string } | null>(null);
@@ -287,6 +312,7 @@ export default function ProgramPage() {
         if (Array.isArray(data)) {
           setProgramData(data.length > 0 ? data : null);
           setWorkshopLocations({});
+          setAldersgruppeLinjer([]);
           return;
         }
         const program = Array.isArray(data?.program) ? data.program : [];
@@ -296,10 +322,14 @@ export default function ProgramPage() {
             ? data.workshopLocations
             : {}
         );
+        setAldersgruppeLinjer(
+          Array.isArray(data?.aldersgruppeLinjer) ? data.aldersgruppeLinjer : []
+        );
       })
       .catch(() => {
         setProgramData(null);
         setWorkshopLocations({});
+        setAldersgruppeLinjer([]);
       })
       .finally(() => setProgramLoading(false));
   }, []);
@@ -340,6 +370,10 @@ export default function ProgramPage() {
     return baseProgram.map((dag) => ({
       ...dag,
       program: dag.program.map((item) => {
+        if (item.aldersgrupperItem && aldersgruppeLinjer.length > 0) {
+          return { ...item, aldersgruppeLinjer };
+        }
+
         if (isDetStoreFamilieloeb(item.titel) && familieloebInfo?.holdnavn && familyToLoad) {
           return {
             ...item,
@@ -412,7 +446,7 @@ export default function ProgramPage() {
         };
       }),
     }));
-  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad]);
+  }, [members, baseProgram, isKursusleder, familieloebInfo, familyToLoad, aldersgruppeLinjer]);
 
   const dagProgram = dagMedFamilieWorkshops[selectedDag] ?? dagMedFamilieWorkshops[0];
   const loading = programLoading || membersLoading;

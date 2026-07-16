@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import NameAutocomplete from "@/components/NameAutocomplete";
 
-type ActivityKey = "aftengrupper" | "gyserløb" | "sheltertur";
+type ActivityKey = "aftengrupper" | "gyserløb" | "sheltertur" | "sheltertur_med_overnatning";
+type ShelterVariant = "uden_overnatning" | "med_overnatning";
 
 const ACTIVITIES: { key: ActivityKey; label: string }[] = [
   { key: "aftengrupper", label: "Aftengrupper" },
@@ -37,6 +38,7 @@ export default function TilmeldPage() {
   const [shelterNavn, setShelterNavn] = useState("");
   const [shelterType, setShelterType] = useState<"Voksen" | "Barn">("Voksen");
   const [shelterAlder, setShelterAlder] = useState("");
+  const [shelterVariant, setShelterVariant] = useState<ShelterVariant>("uden_overnatning");
 
   useEffect(() => {
     fetch("/api/workshopoversigt?options=aftengrupper")
@@ -65,6 +67,7 @@ export default function TilmeldPage() {
     setShelterNavn("");
     setShelterType("Voksen");
     setShelterAlder("");
+    setShelterVariant("uden_overnatning");
     setError(null);
   }, []);
 
@@ -171,7 +174,16 @@ export default function TilmeldPage() {
         setError("Udfyld alder for barn");
         return;
       }
-      setSubmitting("sheltertur");
+      if (shelterVariant === "med_overnatning" && shelterType === "Barn") {
+        const alderNum = parseInt(shelterAlder.trim(), 10);
+        if (isNaN(alderNum) || alderNum < 11) {
+          setError("Man skal være mindst 11 år for at overnatte på sheltertur");
+          return;
+        }
+      }
+      const field: ActivityKey =
+        shelterVariant === "med_overnatning" ? "sheltertur_med_overnatning" : "sheltertur";
+      setSubmitting(field);
       setError(null);
       setSuccess(null);
       try {
@@ -179,7 +191,7 @@ export default function TilmeldPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            field: "sheltertur",
+            field,
             navn: shelterNavn.trim(),
             email,
             type: shelterType,
@@ -188,7 +200,7 @@ export default function TilmeldPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Fejl");
-        setSuccess("sheltertur");
+        setSuccess(field);
         resetSheltertur();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl ved tilmelding");
@@ -196,8 +208,17 @@ export default function TilmeldPage() {
         setSubmitting(null);
       }
     },
-    [shelterNavn, shelterType, shelterAlder, email, resetSheltertur]
+    [shelterNavn, shelterType, shelterAlder, shelterVariant, email, resetSheltertur]
   );
+
+  const shelterSubmitting =
+    submitting === "sheltertur" || submitting === "sheltertur_med_overnatning";
+  const shelterSuccess =
+    success === "sheltertur" || success === "sheltertur_med_overnatning";
+  const shelterOvernightAgeInvalid =
+    shelterVariant === "med_overnatning" &&
+    shelterType === "Barn" &&
+    (!shelterAlder.trim() || parseInt(shelterAlder.trim(), 10) < 11);
 
   if (!email) return null;
 
@@ -377,9 +398,43 @@ export default function TilmeldPage() {
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold text-slate-800">Sheltertur</h2>
             <p className="mb-4 text-sm text-slate-600">
-              Vælg en person fra din familie. Ved barn skal alder udfyldes.
+              Vælg en person fra din familie. Sheltertur er mest egnet for børn på 11+. Man skal være
+              mindst 11 år for at overnatte.
             </p>
             <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Tilmelding</label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                    <input
+                      type="radio"
+                      name="shelter-variant"
+                      checked={shelterVariant === "uden_overnatning"}
+                      onChange={() => setShelterVariant("uden_overnatning")}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-800">Uden overnatning</span>
+                      <span className="block text-xs text-slate-500">Deltag i shelterturen uden at overnatte.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                    <input
+                      type="radio"
+                      name="shelter-variant"
+                      checked={shelterVariant === "med_overnatning"}
+                      onChange={() => setShelterVariant("med_overnatning")}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-800">Med overnatning</span>
+                      <span className="block text-xs text-slate-500">
+                        Overnat i shelter. Børn skal være mindst 11 år.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Navn</label>
                 <NameAutocomplete
@@ -415,7 +470,9 @@ export default function TilmeldPage() {
               </div>
               {shelterType === "Barn" && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Alder</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Alder{shelterVariant === "med_overnatning" ? " (min. 11 år for overnatning)" : ""}
+                  </label>
                   <input
                     type="text"
                     value={shelterAlder}
@@ -429,15 +486,16 @@ export default function TilmeldPage() {
                 type="button"
                 onClick={handleSheltertur}
                 disabled={
-                  submitting === "sheltertur" ||
+                  shelterSubmitting ||
                   !shelterNavn.trim() ||
-                  (shelterType === "Barn" && !shelterAlder.trim())
+                  (shelterType === "Barn" && !shelterAlder.trim()) ||
+                  shelterOvernightAgeInvalid
                 }
                 className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
               >
-                {submitting === "sheltertur" ? "Tilføjer..." : "Tilføj"}
+                {shelterSubmitting ? "Tilføjer..." : "Tilføj"}
               </button>
-              {success === "sheltertur" && (
+              {shelterSuccess && (
                 <p className="text-sm text-green-600">Tilmeldt!</p>
               )}
             </form>

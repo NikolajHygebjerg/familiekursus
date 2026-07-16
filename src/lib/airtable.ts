@@ -896,7 +896,16 @@ const ACTIVITY_FIELD_OPTIONS: Record<string, string[]> = {
   aftengrupper: ["Aftengrupper", "A Aftengrupper"],
   gyserløb: ["Gyserløb", "A Gyserløb"],
   sheltertur: ["Sheltertur", "A Sheltertur"],
+  sheltertur_med_overnatning: ["Sheltertur med overnatning", "A Sheltertur med overnatning"],
 };
+
+export type ActivityFieldKey =
+  | "aftengrupper"
+  | "gyserløb"
+  | "sheltertur"
+  | "sheltertur_med_overnatning";
+
+const SHELTERTUR_FIELD_KEYS: ActivityFieldKey[] = ["sheltertur", "sheltertur_med_overnatning"];
 const WORKSHOPOVERSIGT_MAX_FIELDS = ["# Max", "Max", "A Max"];
 const WORKSHOPOVERSIGT_LOKATION_FIELDS: Record<string, string[]> = {
   workshop1: [
@@ -1025,7 +1034,7 @@ export interface ActivityRecord {
 }
 
 export async function getActivityParticipantsFromYearTable(
-  fieldKey: "aftengrupper" | "gyserløb" | "sheltertur",
+  fieldKey: ActivityFieldKey,
   year?: number
 ): Promise<string[]> {
   const y = year ?? getCurrentYear();
@@ -1139,7 +1148,7 @@ export async function getYearTableFieldNames(): Promise<string[]> {
 }
 
 export async function addToYearTableActivity(
-  fieldKey: "aftengrupper" | "gyserløb" | "sheltertur",
+  fieldKey: ActivityFieldKey,
   navn: string,
   email: string,
   options?: { alder?: string; valgtOption?: string; type?: string }
@@ -1150,9 +1159,10 @@ export async function addToYearTableActivity(
   if (!record) {
     throw new Error("Person ikke fundet. Tilmeld først workshops for at tilføje til aktiviteter.");
   }
-  const activityFieldName = ACTIVITY_FIELD_OPTIONS[fieldKey][0];
-  const alderFieldName = ALDER_FIELD_OPTIONS[0];
-  const barnVoksenFieldName = BARN_VOKSEN_FIELDS[0];
+  const fieldNames = await getTableFieldNames(tableId);
+  const activityFieldName = resolveFieldName(fieldNames, ACTIVITY_FIELD_OPTIONS[fieldKey]);
+  const alderFieldName = resolveFieldName(fieldNames, ALDER_FIELD_OPTIONS);
+  const barnVoksenFieldName = resolveFieldName(fieldNames, BARN_VOKSEN_FIELDS);
   const fields: Record<string, string | number> = {};
   if (options?.type?.trim()) {
     fields[barnVoksenFieldName] = options.type.trim();
@@ -1163,15 +1173,22 @@ export async function addToYearTableActivity(
   }
   if (fieldKey === "aftengrupper" && options?.valgtOption?.trim()) {
     fields[activityFieldName] = options.valgtOption.trim();
-  } else if (fieldKey === "gyserløb" || fieldKey === "sheltertur") {
+  } else if (fieldKey === "gyserløb" || SHELTERTUR_FIELD_KEYS.includes(fieldKey)) {
     fields[activityFieldName] = "Ja";
+    if (SHELTERTUR_FIELD_KEYS.includes(fieldKey)) {
+      for (const otherKey of SHELTERTUR_FIELD_KEYS) {
+        if (otherKey === fieldKey) continue;
+        const otherFieldName = resolveFieldName(fieldNames, ACTIVITY_FIELD_OPTIONS[otherKey]);
+        fields[otherFieldName] = "";
+      }
+    }
   }
   await updateAirtableRecord(tableId, record.id, fields);
 }
 
 // Behold for bagudkompatibilitet – læser nu fra årstabellen
 export async function getWorkshopoversigtParticipants(
-  fieldKey: "aftengrupper" | "gyserløb" | "sheltertur"
+  fieldKey: ActivityFieldKey
 ): Promise<string[]> {
   return getActivityParticipantsFromYearTable(fieldKey);
 }
@@ -1907,7 +1924,11 @@ function stripStjerneloebFromTitel(titel: string): string {
 
 function isAldersgrupperProgramTitel(titel: string): boolean {
   const t = titel.toLowerCase();
-  return t.includes("aldersopdelte") || t.includes("børn i aldersgrupper");
+  return (
+    t.includes("aldersopdelte") ||
+    t.includes("børn i aldersgrupper") ||
+    t.includes("børnegrupper")
+  );
 }
 
 function getWorkshopSlotFromTitel(titel: string): WorkshopSlot | undefined {
@@ -2575,6 +2596,41 @@ export function buildFamilyAldersgruppeBlocks(
   return Array.from(byGroup.values()).sort(
     (a, b) => groupSortKey(a.gruppeNavn) - groupSortKey(b.gruppeNavn)
   );
+}
+
+export function parseActivityWithLocation(raw: string): { activity: string; lokation?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { activity: "" };
+
+  const match = trimmed.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (match) {
+    return {
+      activity: match[1].replace(/:\s*$/, "").trim(),
+      lokation: match[2].trim(),
+    };
+  }
+
+  return { activity: trimmed.replace(/:\s*$/, "").trim() };
+}
+
+export interface AldersgruppeProgramLine {
+  gruppeNavn: string;
+  activity: string;
+  lokation?: string;
+}
+
+export function buildAldersgruppeProgramLines(
+  groups: AldersgruppeDefinition[]
+): AldersgruppeProgramLine[] {
+  return groups.map((group) => {
+    const activityRaw = group.activities.join("\n").split("\n").map((line) => line.trim()).find(Boolean) || "";
+    const { activity, lokation } = parseActivityWithLocation(activityRaw);
+    return {
+      gruppeNavn: group.name,
+      activity,
+      lokation,
+    };
+  });
 }
 
 export function formatAldersgruppeBeskrivelse(blocks: FamilyAldersgruppeBlock[]): string {
