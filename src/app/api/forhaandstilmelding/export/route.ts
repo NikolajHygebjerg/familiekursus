@@ -2,7 +2,6 @@ import {
   getAllForhaandstilmeldinger,
   getBrugerByEmail,
 } from "@/lib/airtable";
-import { sendEmailWithAttachment } from "@/lib/email";
 import { buildForhaandstilmeldingExcel } from "@/lib/forhaandstilmelding-excel";
 import { NextResponse } from "next/server";
 
@@ -25,18 +24,17 @@ export async function POST(request: Request) {
     const entries = await getAllForhaandstilmeldinger();
     const excelBuffer = await buildForhaandstilmeldingExcel(entries);
     const dateLabel = new Date().toISOString().slice(0, 10);
+    const filename = `forhaandstilmeldinger-${dateLabel}.xlsx`;
 
-    await sendEmailWithAttachment({
-      to: email,
-      subject: `Forhåndstilmeldinger – Familiekursus ${dateLabel}`,
-      text: `Vedhæftet er oversigt over ${entries.length} forhåndstilmeldinger (${entries.reduce((s, e) => s + e.antalVoksne, 0)} voksne og ${entries.reduce((s, e) => s + e.antalBorn, 0)} børn).`,
-      attachment: {
-        filename: `forhaandstilmeldinger-${dateLabel}.xlsx`,
-        content: excelBuffer,
+    return new NextResponse(new Uint8Array(excelBuffer), {
+      status: 200,
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
       },
     });
-
-    return NextResponse.json({ ok: true, count: entries.length });
   } catch (error) {
     console.error("Forhåndstilmelding export fejl:", error);
     return NextResponse.json(

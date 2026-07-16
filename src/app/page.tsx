@@ -144,9 +144,19 @@ export default function AntalPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Eksport fejlede");
-      setExportMessage(`Excel-ark sendt til ${email} (${data.count} forhåndstilmeldinger).`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Eksport fejlede");
+      }
+      const blob = await res.blob();
+      const dateLabel = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `forhaandstilmeldinger-${dateLabel}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setExportMessage(`Excel-ark downloadet (${forhaandstilmeldinger.length} forhåndstilmeldinger).`);
     } catch (err) {
       setExportError(err instanceof Error ? err.message : "Eksport fejlede");
     } finally {
@@ -291,10 +301,10 @@ export default function AntalPage() {
                   disabled={exporting || forhaandstilmeldinger.length === 0}
                   className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
                 >
-                  {exporting ? "Sender..." : "Eksporter"}
+                  {exporting ? "Downloader..." : "Download Excel"}
                 </button>
                 <p className="text-sm text-slate-500">
-                  Sender Excel-ark til {email} med navn, email, antal voksne og børn.
+                  Download Excel-ark med navn, email, antal voksne og børn.
                 </p>
               </div>
 
