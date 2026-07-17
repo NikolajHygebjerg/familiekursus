@@ -6,6 +6,7 @@ import {
   BilleduploadGalleryGroups,
   type BilleduploadGalleryGroup,
 } from "@/components/BilleduploadGallery";
+import { BilleduploadFilePicker } from "@/components/BilleduploadFilePicker";
 import {
   compressImageIfNeeded,
   MAX_UPLOAD_BYTES,
@@ -27,7 +28,7 @@ export default function EvalueringPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [hasExisting, setHasExisting] = useState(false);
-  const [uploadFiles, setUploadFiles] = useState<FileList | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -110,7 +111,7 @@ export default function EvalueringPage() {
   }, [email, antalVoksne, antalBorn, hasExisting]);
 
   const handleBilledupload = useCallback(async () => {
-    if (!email || !uploadFiles || uploadFiles.length === 0) {
+    if (!email || uploadFiles.length === 0) {
       setUploadError("Vælg mindst ét billede");
       return;
     }
@@ -121,7 +122,7 @@ export default function EvalueringPage() {
 
     try {
       let uploaded = 0;
-      for (const file of Array.from(uploadFiles)) {
+      for (const file of uploadFiles) {
         const validationError = validateBilleduploadFile(file);
         if (validationError) throw new Error(validationError);
 
@@ -146,7 +147,7 @@ export default function EvalueringPage() {
       setUploadSuccess(
         uploaded === 1 ? "1 billede uploadet. Tak!" : `${uploaded} billeder uploadet. Tak!`
       );
-      setUploadFiles(null);
+      setUploadFiles([]);
       await loadUploadedImages();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload fejlede");
@@ -360,23 +361,12 @@ export default function EvalueringPage() {
               </div>
             )}
 
-            <div>
-              <label htmlFor="billedupload-files" className="mb-1 block text-sm font-medium text-slate-700">
-                Vælg billeder
-              </label>
-              <input
-                id="billedupload-files"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                multiple
-                onChange={(e) => setUploadFiles(e.target.files)}
-                className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-amber-800 hover:file:bg-amber-200"
-              />
-              <p className="mt-2 text-xs text-slate-500">
-                Kun billeder (JPG, PNG, WebP, GIF). Videoer accepteres ikke. Store billeder komprimeres
-                automatisk (max 4,5 MB).
-              </p>
-            </div>
+            <BilleduploadFilePicker
+              id="billedupload-files"
+              files={uploadFiles}
+              onChange={setUploadFiles}
+              disabled={uploading}
+            />
 
             {uploadError && (
               <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{uploadError}</div>
@@ -389,7 +379,7 @@ export default function EvalueringPage() {
 
             <button
               type="submit"
-              disabled={uploading || !email || !uploadFiles?.length}
+              disabled={uploading || !email || uploadFiles.length === 0}
               className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
             >
               {uploading ? "Uploader..." : "Upload billeder"}

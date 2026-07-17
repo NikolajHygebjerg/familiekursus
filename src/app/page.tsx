@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
 import { familiekursusBilledeUrl } from "@/lib/blob-config";
+import { BilleduploadFilePicker } from "@/components/BilleduploadFilePicker";
 import { compressImageIfNeeded, MAX_UPLOAD_BYTES, validateBilleduploadFile } from "@/lib/image-upload";
 
 interface WorkshopCount {
@@ -129,7 +130,7 @@ export default function AntalPage() {
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [zipMessage, setZipMessage] = useState<string | null>(null);
   const [zipError, setZipError] = useState<string | null>(null);
-  const [adminUploadFiles, setAdminUploadFiles] = useState<FileList | null>(null);
+  const [adminUploadFiles, setAdminUploadFiles] = useState<File[]>([]);
   const [adminUploadTargetEmail, setAdminUploadTargetEmail] = useState("");
   const [adminUploading, setAdminUploading] = useState(false);
   const [adminUploadError, setAdminUploadError] = useState<string | null>(null);
@@ -278,7 +279,7 @@ export default function AntalPage() {
   }
 
   async function handleAdminBilledupload() {
-    if (!email || !adminUploadFiles || adminUploadFiles.length === 0) {
+    if (!email || adminUploadFiles.length === 0) {
       setAdminUploadError("Vælg mindst ét billede");
       return;
     }
@@ -289,7 +290,7 @@ export default function AntalPage() {
 
     try {
       let uploaded = 0;
-      for (const file of Array.from(adminUploadFiles)) {
+      for (const file of adminUploadFiles) {
         const validationError = validateBilleduploadFile(file);
         if (validationError) throw new Error(validationError);
 
@@ -314,7 +315,7 @@ export default function AntalPage() {
       setAdminUploadSuccess(
         uploaded === 1 ? "1 billede uploadet." : `${uploaded} billeder uploadet.`
       );
-      setAdminUploadFiles(null);
+      setAdminUploadFiles([]);
       loadBilledupload();
     } catch (err) {
       setAdminUploadError(err instanceof Error ? err.message : "Upload fejlede");
@@ -579,25 +580,13 @@ export default function AntalPage() {
                       className="w-full rounded-lg border border-slate-300 px-4 py-2 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                     />
                   </div>
-                  <div>
-                    <label
-                      htmlFor="admin-upload-files"
-                      className="mb-1 block text-sm font-medium text-slate-700"
-                    >
-                      Vælg billeder
-                    </label>
-                    <input
-                      id="admin-upload-files"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      multiple
-                      onChange={(e) => setAdminUploadFiles(e.target.files)}
-                      className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-amber-800 hover:file:bg-amber-200"
-                    />
-                    <p className="mt-2 text-xs text-slate-500">
-                      Kun billeder — videoer accepteres ikke.
-                    </p>
-                  </div>
+                  <BilleduploadFilePicker
+                    id="admin-upload-files"
+                    files={adminUploadFiles}
+                    onChange={setAdminUploadFiles}
+                    disabled={adminUploading}
+                    helperText="Kun billeder — videoer accepteres ikke. Max 4,5 MB pr. billede."
+                  />
                   {adminUploadError && (
                     <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                       {adminUploadError}
