@@ -77,19 +77,31 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData();
-    const email = String(formData.get("email") || "")
+    const uploaderEmail = String(formData.get("email") || "")
       .trim()
       .toLowerCase();
+    const targetEmailRaw = String(formData.get("targetEmail") || "").trim().toLowerCase();
     const file = formData.get("file");
 
-    if (!email || !(file instanceof File)) {
+    if (!uploaderEmail || !(file instanceof File)) {
       return NextResponse.json({ error: "Email og fil mangler" }, { status: 400 });
     }
 
-    if (!(await emailExistsIn2026(email))) {
+    const bruger = await getBrugerByEmail(uploaderEmail);
+    const isAdmin = Boolean(bruger?.isAdmin);
+    const storageEmail = targetEmailRaw || uploaderEmail;
+
+    if (!isAdmin && !(await emailExistsIn2026(uploaderEmail))) {
       return NextResponse.json(
         { error: "Kun tilmeldte familier kan uploade billeder" },
         { status: 403 }
+      );
+    }
+
+    if (isAdmin && targetEmailRaw && !(await emailExistsIn2026(targetEmailRaw))) {
+      return NextResponse.json(
+        { error: "Familie-email findes ikke blandt tilmeldte" },
+        { status: 400 }
       );
     }
 
@@ -105,7 +117,7 @@ export async function POST(request: Request) {
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const safeEmail = email.replace(/[^a-z0-9@._-]/g, "");
+    const safeEmail = storageEmail.replace(/[^a-z0-9@._-]/g, "");
     const pathname = `familiekursus-billeder/${safeEmail}/${Date.now()}-${sanitizeFilename(file.name)}`;
     const blob = await put(pathname, file, {
       access: "private",

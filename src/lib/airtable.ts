@@ -3081,21 +3081,43 @@ export async function deleteMoedOsPerson(slug: string, isStaticPerson: boolean):
 const FORHAANDSTTILMELDING_EMAIL_FIELDS = ["Email", "email", "A Email"];
 const FORHAANDSTTILMELDING_FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const FORHAANDSTTILMELDING_NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
-const FORHAANDSTTILMELDING_VOKSNE_FIELDS = ["Antal voksne", "A Antal voksne", "# Antal voksne"];
-const FORHAANDSTTILMELDING_BORN_FIELDS = ["Antal børn", "A Antal børn", "# Antal børn", "Antal born"];
-
-const FORHAANDSTTILMELDING_DEFAULT_FIELD_NAMES = new Set([
-  "Navn",
-  "Familie",
-  "Email",
+const FORHAANDSTTILMELDING_VOKSNE_FIELDS = [
+  "Antal voksne ",
   "Antal voksne",
-  "Antal børn",
-]);
+  "A Antal voksne",
+  "# Antal voksne",
+  "Voksne",
+];
+const FORHAANDSTTILMELDING_BORN_FIELDS = ["Antal børn", "A Antal børn", "# Antal børn", "Antal born", "Børn"];
 
 async function getForhaandstilmeldingFieldNames(): Promise<Set<string>> {
-  const names = await getTableFieldNames(TABLE_FORHAANDSTTILMELDING);
-  if (names.size > 0) return names;
-  return FORHAANDSTTILMELDING_DEFAULT_FIELD_NAMES;
+  return getTableFieldNames(TABLE_FORHAANDSTTILMELDING);
+}
+
+function findRecordFieldKey(record: AirtableRecord, possibleNames: string[]): string | null {
+  for (const name of possibleNames) {
+    if (name in record.fields) return name;
+  }
+  const keys = Object.keys(record.fields);
+  for (const name of possibleNames) {
+    const normalized = name.trim().toLowerCase();
+    const match = keys.find((key) => key.trim().toLowerCase() === normalized);
+    if (match) return match;
+  }
+  return null;
+}
+
+function getForhaandstilmeldingFieldValue(record: AirtableRecord, possibleNames: string[]): string | null {
+  const key = findRecordFieldKey(record, possibleNames);
+  if (!key) return null;
+  const value = record.fields[key];
+  if (value == null || value === "") return null;
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value) && value.length > 0) {
+    return (typeof value[0] === "string" ? value[0] : String(value[0])).trim() || null;
+  }
+  return String(value).trim() || null;
 }
 
 function resolveForhaandstilmeldingField(
@@ -3104,12 +3126,21 @@ function resolveForhaandstilmeldingField(
   label: string
 ): string {
   const resolved = resolveFieldName(fieldNames, possibleNames);
-  if (!fieldNames.has(resolved)) {
-    throw new Error(
-      `Airtable-feltet "${label}" findes ikke i tabellen Forhåndstilmelding. Opret feltet som "${possibleNames[0]}".`
-    );
+  if (fieldNames.size === 0) return resolved;
+
+  if (fieldNames.has(resolved)) return resolved;
+
+  const normalizedNames = new Map(
+    Array.from(fieldNames).map((name) => [name.trim().toLowerCase(), name] as const)
+  );
+  for (const candidate of possibleNames) {
+    const match = normalizedNames.get(candidate.trim().toLowerCase());
+    if (match) return match;
   }
-  return resolved;
+
+  throw new Error(
+    `Airtable-feltet "${label}" findes ikke i tabellen Forhåndstilmelding. Opret feltet som "${possibleNames[0].trim()}".`
+  );
 }
 
 function getForhaandstilmeldingEmail(record: AirtableRecord): string | null {
@@ -3146,8 +3177,12 @@ function recordToForhaandstilmelding(record: AirtableRecord): Forhaandstilmeldin
     id: record.id,
     email,
     navn: getForhaandstilmeldingDisplayName(record),
-    antalVoksne: parseCountField(getFieldValue(record, FORHAANDSTTILMELDING_VOKSNE_FIELDS)),
-    antalBorn: parseCountField(getFieldValue(record, FORHAANDSTTILMELDING_BORN_FIELDS)),
+    antalVoksne: parseCountField(
+      getForhaandstilmeldingFieldValue(record, FORHAANDSTTILMELDING_VOKSNE_FIELDS)
+    ),
+    antalBorn: parseCountField(
+      getForhaandstilmeldingFieldValue(record, FORHAANDSTTILMELDING_BORN_FIELDS)
+    ),
   };
 }
 
