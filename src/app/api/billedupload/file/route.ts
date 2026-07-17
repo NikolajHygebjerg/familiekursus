@@ -1,4 +1,4 @@
-import { getBrugerByEmail } from "@/lib/airtable";
+import { canAccessBilledupload } from "@/lib/billedupload-access";
 import { blobStoreOptions } from "@/lib/blob-config";
 import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
@@ -22,9 +22,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Adgang nægtet" }, { status: 403 });
     }
 
-    const bruger = await getBrugerByEmail(email);
-    if (!bruger?.isAdmin) {
-      return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
+    if (!(await canAccessBilledupload(email))) {
+      return NextResponse.json({ error: "Adgang nægtet" }, { status: 403 });
     }
 
     const result = await get(pathname, { access: "private", ...blobStoreOptions() });

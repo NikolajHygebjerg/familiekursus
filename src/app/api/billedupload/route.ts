@@ -1,13 +1,18 @@
-import { emailExistsIn2026, getBrugerByEmail, getFamilyByEmail } from "@/lib/airtable";
+import {
+  emailExistsIn2026,
+  getBrugerByEmail,
+  getFamilyByEmail,
+} from "@/lib/airtable";
+import { canAccessBilledupload } from "@/lib/billedupload-access";
 import { blobStoreOptions, isBlobUploadConfigured } from "@/lib/blob-config";
 import { listFamiliekursusBilleder } from "@/lib/familiekursus-billeder";
+import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES, validateBilleduploadFile } from "@/lib/image-upload";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const MAX_FILE_SIZE = 4.5 * 1024 * 1024;
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const BILLEUPLOAD_PREFIX = "familiekursus-billeder/";
 
 function sanitizeFilename(name: string): string {
   const base = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -20,17 +25,8 @@ export async function GET(request: Request) {
     const email = searchParams.get("email")?.trim().toLowerCase();
     const listAll = searchParams.get("list") === "1";
 
-    if (!listAll) {
-      return NextResponse.json({ error: "Ugyldig forespørgsel" }, { status: 400 });
-    }
-
     if (!email) {
       return NextResponse.json({ error: "Email mangler" }, { status: 400 });
-    }
-
-    const bruger = await getBrugerByEmail(email);
-    if (!bruger?.isAdmin) {
-      return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
     }
 
     if (!isBlobUploadConfigured()) {
@@ -38,6 +34,14 @@ export async function GET(request: Request) {
         { error: "Billede-upload er ikke konfigureret endnu." },
         { status: 503 }
       );
+    }
+
+    if (!(await canAccessBilledupload(email))) {
+      return NextResponse.json({ error: "Kun tilmeldte har adgang" }, { status: 403 });
+    }
+
+    if (!listAll) {
+      return NextResponse.json({ error: "Ugyldig forespørgsel" }, { status: 400 });
     }
 
     const { groups, totalCount } = await listFamiliekursusBilleder();
@@ -105,11 +109,20 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!ALLOWED_TYPES.has(file.type)) {
-      return NextResponse.json({ error: "Kun JPG, PNG, WebP og GIF er tilladt" }, { status: 400 });
+    const validationError = validateBilleduploadFile(file);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    if (file.size > MAX_FILE_SIZE) {
+    if (!ALLOWED_IMAGE_TYPES.has(file.type) && file.type) {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const allowedExts = ["jpg", "jpeg", "png", "webp", "gif"];
+      if (!allowedExts.includes(ext)) {
+        return NextResponse.json({ error: "Kun JPG, PNG, WebP og GIF er tilladt" }, { status: 400 });
+      }
+    }
+
+    if (file.size > MAX_UPLOAD_BYTES) {
       return NextResponse.json(
         { error: "Billedet må max være 4,5 MB. Prøv et mindre billede." },
         { status: 400 }

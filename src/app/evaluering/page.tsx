@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { compressImageIfNeeded, MAX_UPLOAD_BYTES } from "@/lib/image-upload";
+import {
+  BilleduploadGalleryGroups,
+  type BilleduploadGalleryGroup,
+} from "@/components/BilleduploadGallery";
+import {
+  compressImageIfNeeded,
+  MAX_UPLOAD_BYTES,
+  validateBilleduploadFile,
+} from "@/lib/image-upload";
 
 const EVALUERING_FORM_URL = "https://forms.cloud.microsoft/e/sFVNEvzDHC";
 const EVALUERING_EMBED_URL = `${EVALUERING_FORM_URL}?embed=true`;
@@ -10,7 +18,7 @@ const EVALUERING_EMBED_URL = `${EVALUERING_FORM_URL}?embed=true`;
 type Tab = "evaluering" | "forhaandstilmelding" | "billedupload";
 
 export default function EvalueringPage() {
-  const { email, familyName } = useAuth();
+  const { email, familyName, isAdmin } = useAuth();
   const [tab, setTab] = useState<Tab>("evaluering");
   const [antalVoksne, setAntalVoksne] = useState("1");
   const [antalBorn, setAntalBorn] = useState("0");
@@ -23,6 +31,32 @@ export default function EvalueringPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [uploadGroups, setUploadGroups] = useState<BilleduploadGalleryGroup[]>([]);
+  const [loadingGallery, setLoadingGallery] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [adminTargetEmail, setAdminTargetEmail] = useState("");
+
+  const loadUploadedImages = useCallback(async () => {
+    if (!email) return;
+    setLoadingGallery(true);
+    try {
+      const res = await fetch(
+        `/api/billedupload?list=1&email=${encodeURIComponent(email)}`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kunne ikke hente billeder");
+      setUploadGroups(data.groups ?? []);
+    } catch {
+      setUploadGroups([]);
+    } finally {
+      setLoadingGallery(false);
+    }
+  }, [email]);
+
+  useEffect(() => {
+    if (!email || tab !== "billedupload") return;
+    void loadUploadedImages();
+  }, [email, tab, loadUploadedImages]);
 
   useEffect(() => {
     if (!email || tab !== "forhaandstilmelding") return;
@@ -88,6 +122,9 @@ export default function EvalueringPage() {
     try {
       let uploaded = 0;
       for (const file of Array.from(uploadFiles)) {
+        const validationError = validateBilleduploadFile(file);
+        if (validationError) throw new Error(validationError);
+
         const prepared = await compressImageIfNeeded(file);
         if (prepared.size > MAX_UPLOAD_BYTES) {
           throw new Error(`${file.name} er for stort (max 4,5 MB)`);
@@ -95,6 +132,9 @@ export default function EvalueringPage() {
         const formData = new FormData();
         formData.append("email", email);
         formData.append("file", prepared);
+        if (isAdmin && adminTargetEmail.trim()) {
+          formData.append("targetEmail", adminTargetEmail.trim().toLowerCase());
+        }
         const res = await fetch("/api/billedupload", {
           method: "POST",
           body: formData,
@@ -107,12 +147,41 @@ export default function EvalueringPage() {
         uploaded === 1 ? "1 billede uploadet. Tak!" : `${uploaded} billeder uploadet. Tak!`
       );
       setUploadFiles(null);
+      await loadUploadedImages();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload fejlede");
     } finally {
       setUploading(false);
     }
-  }, [email, uploadFiles]);
+  }, [email, uploadFiles, isAdmin, adminTargetEmail, loadUploadedImages]);
+
+  const handleDownloadZip = useCallback(async () => {
+    if (!email) return;
+    setDownloadingZip(true);
+    try {
+      const res = await fetch("/api/billedupload/zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Download fejlede");
+      }
+      const blob = await res.blob();
+      const dateLabel = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `familiekursus-billeder-${dateLabel}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Download fejlede");
+    } finally {
+      setDownloadingZip(false);
+    }
+  }, [email]);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col px-4 py-6 pb-24">
@@ -258,8 +327,8 @@ export default function EvalueringPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-800">Billedupload</h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Upload billeder fra familiekursus her. I er allerede logget ind i appen — det kræver ikke
-            Microsoft-login. Billederne gemmes sikkert og kan hentes af kursusledelsen.
+            Upload billeder fra familiekursus her. Alle tilmeldte kan se og downloade alle uploadede
+            billeder nedenfor.
           </p>
           {familyName && familyName !== "Kursusleder" && (
             <p className="mt-2 text-sm text-slate-500">Familie: {familyName}</p>
@@ -272,6 +341,25 @@ export default function EvalueringPage() {
               void handleBilledupload();
             }}
           >
+            {isAdmin && (
+              <div>
+                <label
+                  htmlFor="billedupload-target-email"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Familie-email (valgfri, kun admin)
+                </label>
+                <input
+                  id="billedupload-target-email"
+                  type="email"
+                  value={adminTargetEmail}
+                  onChange={(e) => setAdminTargetEmail(e.target.value)}
+                  placeholder="Upload på vegne af en familie"
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+            )}
+
             <div>
               <label htmlFor="billedupload-files" className="mb-1 block text-sm font-medium text-slate-700">
                 Vælg billeder
@@ -285,7 +373,8 @@ export default function EvalueringPage() {
                 className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-amber-800 hover:file:bg-amber-200"
               />
               <p className="mt-2 text-xs text-slate-500">
-                JPG, PNG, WebP eller GIF. Store billeder komprimeres automatisk (max 4,5 MB).
+                Kun billeder (JPG, PNG, WebP, GIF). Videoer accepteres ikke. Store billeder komprimeres
+                automatisk (max 4,5 MB).
               </p>
             </div>
 
@@ -306,6 +395,28 @@ export default function EvalueringPage() {
               {uploading ? "Uploader..." : "Upload billeder"}
             </button>
           </form>
+
+          {loadingGallery ? (
+            <p className="mt-8 text-sm text-slate-500">Henter billeder...</p>
+          ) : (
+            email && (
+              <>
+                {uploadGroups.length > 0 && (
+                  <div className="mt-8 border-t border-slate-200 pt-6">
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadZip()}
+                      disabled={downloadingZip}
+                      className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      {downloadingZip ? "Pakker..." : "Download alle (ZIP)"}
+                    </button>
+                  </div>
+                )}
+                <BilleduploadGalleryGroups groups={uploadGroups} viewerEmail={email} />
+              </>
+            )
+          )}
         </section>
       )}
     </main>

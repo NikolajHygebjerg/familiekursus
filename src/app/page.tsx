@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
 import { familiekursusBilledeUrl } from "@/lib/blob-config";
-import { compressImageIfNeeded, MAX_UPLOAD_BYTES } from "@/lib/image-upload";
+import { compressImageIfNeeded, MAX_UPLOAD_BYTES, validateBilleduploadFile } from "@/lib/image-upload";
 
 interface WorkshopCount {
   name: string;
@@ -290,6 +290,9 @@ export default function AntalPage() {
     try {
       let uploaded = 0;
       for (const file of Array.from(adminUploadFiles)) {
+        const validationError = validateBilleduploadFile(file);
+        if (validationError) throw new Error(validationError);
+
         const prepared = await compressImageIfNeeded(file);
         if (prepared.size > MAX_UPLOAD_BYTES) {
           throw new Error(`${file.name} er for stort (max 4,5 MB)`);
@@ -533,7 +536,8 @@ export default function AntalPage() {
                   {downloadingZip ? "Pakker..." : "Download alle (ZIP)"}
                 </button>
                 <p className="text-sm text-slate-500">
-                  Download alle uploadede billeder grupperet efter familie.
+                  Download alle uploadede billeder grupperet efter familie (tilgængeligt for alle
+                  tilmeldte).
                 </p>
               </div>
 
@@ -590,6 +594,9 @@ export default function AntalPage() {
                       onChange={(e) => setAdminUploadFiles(e.target.files)}
                       className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-amber-800 hover:file:bg-amber-200"
                     />
+                    <p className="mt-2 text-xs text-slate-500">
+                      Kun billeder — videoer accepteres ikke.
+                    </p>
                   </div>
                   {adminUploadError && (
                     <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">

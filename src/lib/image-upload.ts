@@ -1,5 +1,54 @@
 export const MAX_UPLOAD_BYTES = 4.5 * 1024 * 1024;
 
+export const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+
+const BLOCKED_VIDEO_EXTENSIONS = new Set([
+  "mp4",
+  "mov",
+  "webm",
+  "avi",
+  "mkv",
+  "m4v",
+  "mpeg",
+  "mpg",
+  "3gp",
+  "hevc",
+  "wmv",
+]);
+
+export function validateBilleduploadFile(file: {
+  name: string;
+  type: string;
+  size: number;
+}): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+
+  if (file.type.startsWith("video/")) {
+    return "Videoer er ikke tilladt — upload kun billeder (JPG, PNG, WebP, GIF).";
+  }
+
+  if (BLOCKED_VIDEO_EXTENSIONS.has(ext)) {
+    return "Videoer er ikke tilladt — upload kun billeder (JPG, PNG, WebP, GIF).";
+  }
+
+  if (ALLOWED_IMAGE_TYPES.has(file.type)) {
+    return null;
+  }
+
+  if (ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+    return null;
+  }
+
+  return "Kun JPG, PNG, WebP og GIF er tilladt.";
+}
+
 export async function compressImageIfNeeded(file: File): Promise<File> {
   if (file.size <= MAX_UPLOAD_BYTES || !file.type.startsWith("image/")) {
     return file;
@@ -45,5 +94,20 @@ export async function compressImageIfNeeded(file: File): Promise<File> {
       reject(new Error("Kunne ikke behandle billedet"));
     };
     img.src = url;
+  });
+}
+
+export function formatUploadBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function formatUploadDate(iso: string): string {
+  return new Date(iso).toLocaleString("da-DK", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }

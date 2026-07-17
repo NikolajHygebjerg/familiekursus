@@ -1,6 +1,7 @@
-import { getBrugerByEmail, getFamilyByEmail } from "@/lib/airtable";
+import { canAccessBilledupload } from "@/lib/billedupload-access";
 import { blobStoreOptions, isBlobUploadConfigured } from "@/lib/blob-config";
 import { listFamiliekursusBilleder } from "@/lib/familiekursus-billeder";
+import { getFamilyByEmail } from "@/lib/airtable";
 import { get } from "@vercel/blob";
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
@@ -16,9 +17,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email mangler" }, { status: 400 });
     }
 
-    const bruger = await getBrugerByEmail(email);
-    if (!bruger?.isAdmin) {
-      return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
+    if (!(await canAccessBilledupload(email))) {
+      return NextResponse.json({ error: "Kun tilmeldte har adgang" }, { status: 403 });
     }
 
     if (!isBlobUploadConfigured()) {
