@@ -1,5 +1,6 @@
-import { emailExistsIn2026 } from "@/lib/airtable";
+import { emailExistsIn2026, getBrugerByEmail, getFamilyByEmail } from "@/lib/airtable";
 import { blobStoreOptions, isBlobUploadConfigured } from "@/lib/blob-config";
+import { listFamiliekursusBilleder } from "@/lib/familiekursus-billeder";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
@@ -11,6 +12,56 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/g
 function sanitizeFilename(name: string): string {
   const base = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
   return base.slice(0, 80) || "billede.jpg";
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const email = searchParams.get("email")?.trim().toLowerCase();
+    const listAll = searchParams.get("list") === "1";
+
+    if (!listAll) {
+      return NextResponse.json({ error: "Ugyldig forespørgsel" }, { status: 400 });
+    }
+
+    if (!email) {
+      return NextResponse.json({ error: "Email mangler" }, { status: 400 });
+    }
+
+    const bruger = await getBrugerByEmail(email);
+    if (!bruger?.isAdmin) {
+      return NextResponse.json({ error: "Kun administratorer har adgang" }, { status: 403 });
+    }
+
+    if (!isBlobUploadConfigured()) {
+      return NextResponse.json(
+        { error: "Billede-upload er ikke konfigureret endnu." },
+        { status: 503 }
+      );
+    }
+
+    const { groups, totalCount } = await listFamiliekursusBilleder();
+    const enrichedGroups = await Promise.all(
+      groups.map(async (group) => ({
+        ...group,
+        familie: (await getFamilyByEmail(group.email)) || null,
+      }))
+    );
+
+    return NextResponse.json({
+      groups: enrichedGroups,
+      summary: {
+        families: groups.length,
+        images: totalCount,
+      },
+    });
+  } catch (error) {
+    console.error("Billedupload GET fejl:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Ukendt fejl" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {

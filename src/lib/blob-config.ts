@@ -19,6 +19,15 @@ export function moedOsImageProxyUrl(pathname: string): string {
   return `/api/moed-os/image?pathname=${encodeURIComponent(pathname)}`;
 }
 
+export function familiekursusBilledeUrl(pathname: string, adminEmail: string, download = false): string {
+  const params = new URLSearchParams({
+    pathname,
+    email: adminEmail,
+  });
+  if (download) params.set("download", "1");
+  return `/api/billedupload/file?${params.toString()}`;
+}
+
 export function blobStoreOptions(): { storeId?: string; token?: string } {
   const options: { storeId?: string; token?: string } = {};
   if (process.env.BLOB_STORE_ID) options.storeId = process.env.BLOB_STORE_ID;
