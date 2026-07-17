@@ -6,22 +6,57 @@ import { useAuth } from "@/context/AuthContext";
 const EVALUERING_FORM_URL = "https://forms.cloud.microsoft/e/sFVNEvzDHC";
 const EVALUERING_EMBED_URL = `${EVALUERING_FORM_URL}?embed=true`;
 
-const BILLEUPLOAD_PAGE_URL =
-  process.env.NEXT_PUBLIC_BILLEUPLOAD_URL ||
-  "https://brandbjerghojskole.sharepoint.com/:f:/s/kk/IgACD7McEBHkRYxXiB4xyR4AATCi-_Wb1QdfkHyyz-gYT2I?nav=MzYyNDI1ZDktMmM4Zi00ZTMzLThjN2EtMzFlMzkyYWE0NzY0";
-
-function getBilleduploadEmbedUrl(pageUrl: string): string {
-  if (pageUrl.includes("forms.cloud.microsoft") || pageUrl.includes("forms.office.com")) {
-    return pageUrl.includes("embed=true")
-      ? pageUrl
-      : `${pageUrl}${pageUrl.includes("?") ? "&" : "?"}embed=true`;
-  }
-  return pageUrl;
-}
-
-const BILLEUPLOAD_EMBED_URL = getBilleduploadEmbedUrl(BILLEUPLOAD_PAGE_URL);
+const MAX_UPLOAD_BYTES = 4.5 * 1024 * 1024;
 
 type Tab = "evaluering" | "forhaandstilmelding" | "billedupload";
+
+async function compressImageIfNeeded(file: File): Promise<File> {
+  if (file.size <= MAX_UPLOAD_BYTES || !file.type.startsWith("image/")) {
+    return file;
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxSide = 2200;
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          resolve(
+            new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", {
+              type: "image/jpeg",
+              lastModified: Date.now(),
+            })
+          );
+        },
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Kunne ikke behandle billedet"));
+    };
+    img.src = url;
+  });
+}
 
 export default function EvalueringPage() {
   const { email, familyName } = useAuth();
@@ -33,6 +68,10 @@ export default function EvalueringPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [hasExisting, setHasExisting] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<FileList | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!email || tab !== "forhaandstilmelding") return;
@@ -84,6 +123,45 @@ export default function EvalueringPage() {
       setLoading(false);
     }
   }, [email, antalVoksne, antalBorn, hasExisting]);
+
+  const handleBilledupload = useCallback(async () => {
+    if (!email || !uploadFiles || uploadFiles.length === 0) {
+      setUploadError("Vælg mindst ét billede");
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+
+    try {
+      let uploaded = 0;
+      for (const file of Array.from(uploadFiles)) {
+        const prepared = await compressImageIfNeeded(file);
+        if (prepared.size > MAX_UPLOAD_BYTES) {
+          throw new Error(`${file.name} er for stort (max 4,5 MB)`);
+        }
+        const formData = new FormData();
+        formData.append("email", email);
+        formData.append("file", prepared);
+        const res = await fetch("/api/billedupload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Kunne ikke uploade ${file.name}`);
+        uploaded += 1;
+      }
+      setUploadSuccess(
+        uploaded === 1 ? "1 billede uploadet. Tak!" : `${uploaded} billeder uploadet. Tak!`
+      );
+      setUploadFiles(null);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload fejlede");
+    } finally {
+      setUploading(false);
+    }
+  }, [email, uploadFiles]);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col px-4 py-6 pb-24">
@@ -226,29 +304,58 @@ export default function EvalueringPage() {
       )}
 
       {tab === "billedupload" && (
-        <>
-          <p className="mb-4 text-center text-sm leading-relaxed text-slate-600">
-            Upload billeder fra familiekursus. Skriv gerne jeres navn, så vi kan se hvem der har
-            uploadet.
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-800">Billedupload</h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            Upload billeder fra familiekursus her. I er allerede logget ind i appen — det kræver ikke
+            Microsoft-login. Billederne gemmes sikkert og kan hentes af kursusledelsen.
           </p>
-          <a
-            href={BILLEUPLOAD_PAGE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-4 block text-center text-sm font-medium text-amber-700 hover:text-amber-800 hover:underline"
+          {familyName && familyName !== "Kursusleder" && (
+            <p className="mt-2 text-sm text-slate-500">Familie: {familyName}</p>
+          )}
+
+          <form
+            className="mt-6 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleBilledupload();
+            }}
           >
-            Åbn upload i ny fane (hvis indlejring ikke virker)
-          </a>
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <iframe
-              src={BILLEUPLOAD_EMBED_URL}
-              title="Billedupload – Familiekursus"
-              className="h-[75vh] min-h-[32rem] w-full border-0"
-              loading="lazy"
-              allow="camera *; microphone *"
-            />
-          </div>
-        </>
+            <div>
+              <label htmlFor="billedupload-files" className="mb-1 block text-sm font-medium text-slate-700">
+                Vælg billeder
+              </label>
+              <input
+                id="billedupload-files"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                onChange={(e) => setUploadFiles(e.target.files)}
+                className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-amber-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-amber-800 hover:file:bg-amber-200"
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                JPG, PNG, WebP eller GIF. Store billeder komprimeres automatisk (max 4,5 MB).
+              </p>
+            </div>
+
+            {uploadError && (
+              <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{uploadError}</div>
+            )}
+            {uploadSuccess && (
+              <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+                {uploadSuccess}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={uploading || !email || !uploadFiles?.length}
+              className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              {uploading ? "Uploader..." : "Upload billeder"}
+            </button>
+          </form>
+        </section>
       )}
     </main>
   );
