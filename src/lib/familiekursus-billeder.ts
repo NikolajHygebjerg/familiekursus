@@ -19,7 +19,7 @@ export interface FamiliekursusBilledeGroup {
 
 function parseBillede(blob: {
   pathname: string;
-  url: string;
+  url?: string;
   uploadedAt?: Date;
   size: number;
 }): FamiliekursusBillede | null {
@@ -30,11 +30,11 @@ function parseBillede(blob: {
 
   const email = rest.slice(0, slash);
   const filename = rest.slice(slash + 1);
-  if (!email || !filename || !blob.url) return null;
+  if (!email || !filename) return null;
 
   return {
     pathname: blob.pathname,
-    url: blob.url,
+    url: blob.url || "",
     filename,
     email,
     uploadedAt: (blob.uploadedAt ?? new Date()).toISOString(),

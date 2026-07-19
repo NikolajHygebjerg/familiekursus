@@ -34,12 +34,14 @@ export default function EvalueringPage() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [uploadGroups, setUploadGroups] = useState<BilleduploadGalleryGroup[]>([]);
   const [loadingGallery, setLoadingGallery] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [adminTargetEmail, setAdminTargetEmail] = useState("");
 
   const loadUploadedImages = useCallback(async () => {
     if (!email) return;
     setLoadingGallery(true);
+    setGalleryError(null);
     try {
       const res = await fetch(
         `/api/billedupload?list=1&email=${encodeURIComponent(email)}`
@@ -47,8 +49,9 @@ export default function EvalueringPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke hente billeder");
       setUploadGroups(data.groups ?? []);
-    } catch {
+    } catch (err) {
       setUploadGroups([]);
+      setGalleryError(err instanceof Error ? err.message : "Kunne ikke hente billeder");
     } finally {
       setLoadingGallery(false);
     }
@@ -385,6 +388,12 @@ export default function EvalueringPage() {
               {uploading ? "Uploader..." : "Upload billeder"}
             </button>
           </form>
+
+          {galleryError && (
+            <div className="mt-8 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              {galleryError}
+            </div>
+          )}
 
           {loadingGallery ? (
             <p className="mt-8 text-sm text-slate-500">Henter billeder...</p>

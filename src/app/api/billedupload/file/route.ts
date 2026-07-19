@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Adgang nægtet" }, { status: 403 });
     }
 
-    const result = await fetchFamiliekursusBlob(blobUrl || pathname!);
+    const result = await fetchFamiliekursusBlob(blobUrl || pathname!, pathname || undefined);
     if (!result || result.statusCode !== 200 || !result.stream) {
       return new NextResponse("Ikke fundet", { status: 404 });
     }

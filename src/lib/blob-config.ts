@@ -1,5 +1,5 @@
 export function isBlobUploadConfigured(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 }
 
 export function getPublicSiteUrl(): string {
@@ -30,16 +30,21 @@ export function familiekursusBilledeUrl(
   });
   if (blobUrl) {
     params.set("url", blobUrl);
-  } else {
-    params.set("pathname", pathname);
   }
+  params.set("pathname", pathname);
   if (download) params.set("download", "1");
   return `/api/billedupload/file?${params.toString()}`;
 }
 
-export function blobStoreOptions(): { token?: string } {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  return token ? { token } : {};
+export function blobStoreOptions(): { storeId?: string; token?: string } {
+  const options: { storeId?: string; token?: string } = {};
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    options.token = process.env.BLOB_READ_WRITE_TOKEN;
+  }
+  if (process.env.BLOB_STORE_ID) {
+    options.storeId = process.env.BLOB_STORE_ID;
+  }
+  return options;
 }
 
 export function normalizeMoedOsStoredImage(stored: string | null | undefined): string {

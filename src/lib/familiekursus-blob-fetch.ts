@@ -26,24 +26,38 @@ function accessFromBlobUrl(url: string): "public" | "private" {
 }
 
 export async function fetchFamiliekursusBlob(
-  urlOrPathname: string
+  urlOrPathname: string,
+  pathnameFallback?: string
 ): Promise<GetBlobResult | null> {
   const options = blobStoreOptions();
+  const candidates = [
+    urlOrPathname,
+    pathnameFallback && pathnameFallback !== urlOrPathname ? pathnameFallback : null,
+  ].filter((value): value is string => Boolean(value));
 
-  if (urlOrPathname.startsWith("http://") || urlOrPathname.startsWith("https://")) {
-    const access = accessFromBlobUrl(urlOrPathname);
-    return get(urlOrPathname, { access, ...options });
-  }
-
-  const attempts: Array<"private" | "public"> = ["private", "public"];
-  for (const access of attempts) {
-    try {
-      const result = await get(urlOrPathname, { access, ...options });
-      if (result && result.statusCode === 200 && result.stream) {
-        return result;
+  for (const candidate of candidates) {
+    if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
+      const access = accessFromBlobUrl(candidate);
+      try {
+        const result = await get(candidate, { access, ...options });
+        if (result && result.statusCode === 200 && result.stream) {
+          return result;
+        }
+      } catch {
+        // Prøv pathname-fallback næste.
       }
-    } catch {
-      // Prøv næste access-type (fx ældre uploads).
+      continue;
+    }
+
+    for (const access of ["private", "public"] as const) {
+      try {
+        const result = await get(candidate, { access, ...options });
+        if (result && result.statusCode === 200 && result.stream) {
+          return result;
+        }
+      } catch {
+        // Prøv næste access-type.
+      }
     }
   }
 

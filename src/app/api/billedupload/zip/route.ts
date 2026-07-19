@@ -32,6 +32,7 @@ export async function POST(request: Request) {
 
     const zip = new JSZip();
     const familieCache = new Map<string, string | null>();
+    let addedFiles = 0;
 
     for (const group of groups) {
       let folderName = familieCache.get(group.email);
@@ -42,11 +43,22 @@ export async function POST(request: Request) {
       const safeFolder = (folderName || group.email).replace(/[\\/:*?"<>|]+/g, "-");
 
       for (const file of group.files) {
-        const result = await fetchFamiliekursusBlob(file.url || file.pathname);
+        const result = await fetchFamiliekursusBlob(
+          file.url || file.pathname,
+          file.pathname
+        );
         if (!result || result.statusCode !== 200 || !result.stream) continue;
         const buffer = Buffer.from(await new Response(result.stream).arrayBuffer());
         zip.file(`${safeFolder}/${file.filename}`, buffer);
+        addedFiles += 1;
       }
+    }
+
+    if (addedFiles === 0) {
+      return NextResponse.json(
+        { error: "Kunne ikke hente nogen billeder fra lageret. Tjek BLOB_READ_WRITE_TOKEN i Vercel." },
+        { status: 502 }
+      );
     }
 
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
