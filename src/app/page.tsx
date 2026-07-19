@@ -75,6 +75,7 @@ interface ForhaandstilmeldingSummary {
 
 interface BilleduploadFile {
   pathname: string;
+  url?: string;
   filename: string;
   email: string;
   uploadedAt: string;
@@ -629,14 +630,14 @@ export default function AntalPage() {
                             className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                           >
                             <a
-                              href={familiekursusBilledeUrl(file.pathname, email!)}
+                              href={familiekursusBilledeUrl(file.pathname, email!, false, file.url)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="block aspect-square bg-slate-200"
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={familiekursusBilledeUrl(file.pathname, email!)}
+                                src={familiekursusBilledeUrl(file.pathname, email!, false, file.url)}
                                 alt={file.filename}
                                 className="h-full w-full object-cover"
                                 loading="lazy"
@@ -650,7 +651,7 @@ export default function AntalPage() {
                                 {formatUploadDate(file.uploadedAt)} · {formatBytes(file.size)}
                               </p>
                               <a
-                                href={familiekursusBilledeUrl(file.pathname, email!, true)}
+                                href={familiekursusBilledeUrl(file.pathname, email!, true, file.url)}
                                 className="inline-block text-xs font-medium text-amber-700 hover:underline"
                               >
                                 Download

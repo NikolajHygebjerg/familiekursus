@@ -5,6 +5,7 @@ const BILLEUPLOAD_PREFIX = "familiekursus-billeder/";
 
 export interface FamiliekursusBillede {
   pathname: string;
+  url: string;
   filename: string;
   email: string;
   uploadedAt: string;
@@ -16,7 +17,12 @@ export interface FamiliekursusBilledeGroup {
   files: FamiliekursusBillede[];
 }
 
-function parseBillede(blob: { pathname: string; uploadedAt?: Date; size: number }): FamiliekursusBillede | null {
+function parseBillede(blob: {
+  pathname: string;
+  url: string;
+  uploadedAt?: Date;
+  size: number;
+}): FamiliekursusBillede | null {
   if (!blob.pathname.startsWith(BILLEUPLOAD_PREFIX)) return null;
   const rest = blob.pathname.slice(BILLEUPLOAD_PREFIX.length);
   const slash = rest.indexOf("/");
@@ -24,10 +30,11 @@ function parseBillede(blob: { pathname: string; uploadedAt?: Date; size: number 
 
   const email = rest.slice(0, slash);
   const filename = rest.slice(slash + 1);
-  if (!email || !filename) return null;
+  if (!email || !filename || !blob.url) return null;
 
   return {
     pathname: blob.pathname,
+    url: blob.url,
     filename,
     email,
     uploadedAt: (blob.uploadedAt ?? new Date()).toISOString(),

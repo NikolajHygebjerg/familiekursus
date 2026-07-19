@@ -3,6 +3,7 @@ import { formatUploadBytes, formatUploadDate } from "@/lib/image-upload";
 
 export interface BilleduploadGalleryFile {
   pathname: string;
+  url?: string;
   filename: string;
   uploadedAt: string;
   size: number;
@@ -36,14 +37,14 @@ function GalleryGrid({
           className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
         >
           <a
-            href={familiekursusBilledeUrl(file.pathname, viewerEmail)}
+                href={familiekursusBilledeUrl(file.pathname, viewerEmail, false, file.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="block aspect-square bg-slate-200"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={familiekursusBilledeUrl(file.pathname, viewerEmail)}
+                  src={familiekursusBilledeUrl(file.pathname, viewerEmail, false, file.url)}
               alt={file.filename}
               className="h-full w-full object-cover"
               loading="lazy"
@@ -57,7 +58,7 @@ function GalleryGrid({
               {formatUploadDate(file.uploadedAt)} · {formatUploadBytes(file.size)}
             </p>
             <a
-              href={familiekursusBilledeUrl(file.pathname, viewerEmail, true)}
+                  href={familiekursusBilledeUrl(file.pathname, viewerEmail, true, file.url)}
               className="inline-block text-xs font-medium text-amber-700 hover:underline"
             >
               Download

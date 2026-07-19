@@ -1,8 +1,8 @@
 import { canAccessBilledupload } from "@/lib/billedupload-access";
-import { blobStoreOptions, isBlobUploadConfigured } from "@/lib/blob-config";
+import { isBlobUploadConfigured } from "@/lib/blob-config";
+import { fetchFamiliekursusBlob } from "@/lib/familiekursus-blob-fetch";
 import { listFamiliekursusBilleder } from "@/lib/familiekursus-billeder";
 import { getFamilyByEmail } from "@/lib/airtable";
-import { get } from "@vercel/blob";
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
 
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       const safeFolder = (folderName || group.email).replace(/[\\/:*?"<>|]+/g, "-");
 
       for (const file of group.files) {
-        const result = await get(file.pathname, { access: "private", ...blobStoreOptions() });
+        const result = await fetchFamiliekursusBlob(file.url || file.pathname);
         if (!result || result.statusCode !== 200 || !result.stream) continue;
         const buffer = Buffer.from(await new Response(result.stream).arrayBuffer());
         zip.file(`${safeFolder}/${file.filename}`, buffer);
