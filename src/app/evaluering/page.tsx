@@ -7,6 +7,7 @@ import {
   type BilleduploadGalleryGroup,
 } from "@/components/BilleduploadGallery";
 import { BilleduploadFilePicker } from "@/components/BilleduploadFilePicker";
+import { BilleduploadIcloudPromo } from "@/components/BilleduploadIcloudPromo";
 import {
   compressImageIfNeeded,
   MAX_UPLOAD_BYTES,
@@ -337,6 +338,8 @@ export default function EvalueringPage() {
           {familyName && familyName !== "Kursusleder" && (
             <p className="mt-2 text-sm text-slate-500">Familie: {familyName}</p>
           )}
+
+          <BilleduploadIcloudPromo />
 
           <form
             className="mt-6 space-y-4"
