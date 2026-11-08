@@ -1,9 +1,11 @@
 import {
+  deleteFamilyByLogin,
   getFamilyByLogin,
   getBrugerByLogin,
   loginExistsInYearTable,
   hasWorkshopRegistration,
   createAirtableRecord,
+  isFamilySelfDeleteCode,
   updateAirtableRecord,
   normalizeLoginName,
 } from "@/lib/airtable";
@@ -196,6 +198,33 @@ export async function POST(request: Request) {
           { error: "Koden skal være mindst 4 tegn — eller lad feltet stå tomt." },
           { status: 400 }
         );
+      }
+
+      if (parsed.provided && isFamilySelfDeleteCode(parsed.value)) {
+        const bruger = await getBrugerByLogin(login);
+        if (bruger?.isAdmin) {
+          return NextResponse.json(
+            { error: "Kursusleder-konto kan ikke slettes med koden Slet." },
+            { status: 403 }
+          );
+        }
+        const inYear = await loginExistsInYearTable(login);
+        const hasBruger = Boolean(bruger?.recordId);
+        if (!inYear && !hasBruger) {
+          return NextResponse.json(
+            { error: "Ingen familie eller bruger fundet med det brugernavn." },
+            { status: 404 }
+          );
+        }
+        const result = await deleteFamilyByLogin(login);
+        return NextResponse.json({
+          ok: true,
+          deleted: true,
+          message:
+            "Familien er afmeldt. Workshoppladser er frigivet, og brugernavnet kan tilmeldes igen.",
+          deletedParticipantRows: result.deletedParticipantRows,
+          deletedBrugerRows: result.deletedBrugerRows,
+        });
       }
 
       const bruger = await getBrugerByLogin(login);

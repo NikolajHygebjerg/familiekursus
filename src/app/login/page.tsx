@@ -43,12 +43,13 @@ const MAX_HISTORY = 12;
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth, email, isAuthReady, needsWorkshopRegistration, isAdmin } = useAuth();
+  const { setAuth, logout, email, isAuthReady, needsWorkshopRegistration, isAdmin } = useAuth();
   const [brugernavnInput, setBrugernavnInput] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<Step>("login");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loginHistory, setLoginHistory] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -93,6 +94,7 @@ export default function LoginPage() {
     if (!login) return;
     setLoading(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
@@ -105,6 +107,17 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login fejlede");
+      if (data.deleted === true) {
+        logout();
+        setBrugernavnInput("");
+        setCode("");
+        setSuccessMessage(
+          typeof data.message === "string"
+            ? data.message
+            : "Familien er afmeldt, og pladserne er frigivet."
+        );
+        return;
+      }
       applyAuthAndRedirect(data, setAuth, router, rememberLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fejlede");
@@ -214,7 +227,9 @@ export default function LoginPage() {
             </label>
             <p className="mb-2 text-sm text-slate-500">
               Har du ikke valgt kode før, kan du logge ind uden. Vil du have en kode fremover, vælg
-              mindst 4 tegn her.
+              mindst 4 tegn her. For at afmelde hele familien fra kursus og frigive jeres
+              workshoppladser: skriv <strong className="font-medium text-slate-700">Slet</strong> som
+              kode (store eller små bogstaver).
             </p>
             <input
               id="kode"
@@ -288,6 +303,12 @@ export default function LoginPage() {
               </button>
             </div>
           </>
+        )}
+
+        {successMessage && (
+          <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-emerald-900">
+            {successMessage}
+          </div>
         )}
 
         {error && (

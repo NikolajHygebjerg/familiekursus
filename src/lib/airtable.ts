@@ -855,6 +855,48 @@ export async function deleteAirtableRecord(
   await deleteFkRecord(tableIdOrName, recordId);
 }
 
+/** Kode «Slet» ved login — afmelder familien helt. */
+export const FAMILY_SELF_DELETE_CODE = "slet";
+
+export function isFamilySelfDeleteCode(raw: string): boolean {
+  return normalizeLoginName(raw).toLowerCase() === FAMILY_SELF_DELETE_CODE;
+}
+
+/** Slet alle deltagere (frigør workshops) + bruger-login for familielogin. */
+export async function deleteFamilyByLogin(login: string): Promise<{
+  deletedParticipantRows: number;
+  deletedBrugerRows: number;
+}> {
+  const normalized = normalizeLoginName(login);
+  let deletedParticipantRows = 0;
+  let deletedBrugerRows = 0;
+
+  const yearTable = getYearTableId(getKursusYear());
+  const participants = await fetchTableRecords(yearTable);
+  for (const record of participants) {
+    if (!loginMatchesRecord(record, normalized)) continue;
+    await deleteAirtableRecord(yearTable, record.id);
+    deletedParticipantRows += 1;
+  }
+
+  try {
+    const brugere = await fetchTableRecords(TABLE_BRUGERE);
+    for (const record of brugere) {
+      const brugerLogin =
+        getFieldValue(record, BRUGERE_BRUGERNAVN_FIELDS) || getEmailFromRecord(record);
+      if (!brugerLogin || normalizeLoginName(brugerLogin).toLowerCase() !== normalized.toLowerCase()) {
+        continue;
+      }
+      await deleteAirtableRecord(TABLE_BRUGERE, record.id);
+      deletedBrugerRows += 1;
+    }
+  } catch {
+    // Brugere-tabellen kan mangle
+  }
+
+  return { deletedParticipantRows, deletedBrugerRows };
+}
+
 export async function getBrugerRecordId(email: string): Promise<string | null> {
   const bruger = await getBrugerByEmail(email);
   return bruger?.recordId ?? null;

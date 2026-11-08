@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import AppHeader from "./AppHeader";
 import BottomNav from "./BottomNav";
 import AddToHomeScreenGuide from "./AddToHomeScreenGuide";
 import SupabaseSourceInfo from "./SupabaseSourceInfo";
@@ -13,7 +13,7 @@ const PUBLIC_PATHS = ["/login", "/workshop-tilmelding"];
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { email, familyName, needsWorkshopRegistration, logout, isAuthReady, isAdmin } = useAuth();
+  const { email, needsWorkshopRegistration, isAuthReady, isAdmin } = useAuth();
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   useEffect(() => {
@@ -34,6 +34,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (isPublic) {
     return (
       <>
+        <AppHeader />
         {children}
         <SupabaseSourceInfo />
       </>
@@ -52,31 +53,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  const displayName = familyName || email || "";
-
   return (
     <>
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Image
-            src="/images/logo.jpg"
-            alt="Familiekursus"
-            width={32}
-            height={32}
-            className="shrink-0 rounded-lg"
-          />
-          <span className="truncate text-sm text-slate-600">{displayName}</span>
-        </div>
-        <button
-          onClick={() => {
-            logout();
-            router.push("/login");
-          }}
-          className="text-sm text-amber-600 hover:text-amber-700"
-        >
-          Log ud
-        </button>
-      </header>
+      <AppHeader />
       <AddToHomeScreenGuide />
       <div className="pb-20">{children}</div>
       <SupabaseSourceInfo />
