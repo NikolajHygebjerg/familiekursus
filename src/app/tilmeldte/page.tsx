@@ -71,6 +71,8 @@ export default function TilmeldtePage() {
   const [bornegruppeOverview, setBornegruppeOverview] = useState<BornegruppeOverviewBlock[]>([]);
 
   const displayFamily = selectedFamily;
+  /** Brugernavn til API — ikke familienavn (fx «Hygge»). */
+  const familyLogin = !isKursusleder && email ? email : null;
 
   useEffect(() => {
     if (isKursusleder) {
@@ -93,39 +95,41 @@ export default function TilmeldtePage() {
   }, [isKursusleder, email]);
 
   useEffect(() => {
-    if (!isKursusleder && selectedFamily && selectedFamily.includes("@")) {
-      setLoadingMembers(true);
-      setError(null);
-      const url = `/api/families/email?email=${encodeURIComponent(selectedFamily)}`;
-      fetch(url)
-        .then((res) => {
-          if (!res.ok) throw new Error(res.statusText);
-          return res.json();
-        })
-        .then(setMembers)
-        .catch((err) => setError(err.message))
-        .finally(() => setLoadingMembers(false));
+    if (!familyLogin) {
+      setMembers([]);
+      return;
     }
-  }, [isKursusleder, selectedFamily, email]);
+    setLoadingMembers(true);
+    setError(null);
+    const url = `/api/families/email?email=${encodeURIComponent(familyLogin)}`;
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(res.statusText);
+        return res.json();
+      })
+      .then(setMembers)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoadingMembers(false));
+  }, [familyLogin]);
 
   useEffect(() => {
-    if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
+    if (!familyLogin) {
       setBornegruppeOverview([]);
       return;
     }
-    fetch(`/api/bornegrupper?email=${encodeURIComponent(selectedFamily)}`)
+    fetch(`/api/bornegrupper?email=${encodeURIComponent(familyLogin)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setBornegruppeOverview(Array.isArray(data?.groups) ? data.groups : []))
       .catch(() => setBornegruppeOverview([]));
-  }, [isKursusleder, selectedFamily]);
+  }, [familyLogin]);
 
   useEffect(() => {
-    if (isKursusleder || !selectedFamily || !selectedFamily.includes("@")) {
+    if (!familyLogin) {
       setFamilieloebInfo(null);
       return;
     }
     setFamilieloebLoading(true);
-    fetch(`/api/familieloeb?email=${encodeURIComponent(selectedFamily)}`)
+    fetch(`/api/familieloeb?email=${encodeURIComponent(familyLogin)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.holdnavn && data?.membersText) {
@@ -136,7 +140,7 @@ export default function TilmeldtePage() {
       })
       .catch(() => setFamilieloebInfo(null))
       .finally(() => setFamilieloebLoading(false));
-  }, [isKursusleder, selectedFamily]);
+  }, [familyLogin]);
 
   const familieloebFamiliesForDisplay = useMemo(() => {
     if (!familieloebInfo?.membersText) return [];

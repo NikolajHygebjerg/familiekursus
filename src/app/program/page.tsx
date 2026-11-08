@@ -281,7 +281,7 @@ export default function ProgramPage() {
   const [ansvarSaving, setAnsvarSaving] = useState(false);
   const [ansvarError, setAnsvarError] = useState<string | null>(null);
 
-  const familyToLoad = isKursusleder ? null : (selectedFamily && selectedFamily.includes("@") ? selectedFamily : null);
+  const familyToLoad = isKursusleder ? null : email || null;
 
   const loadAnsvarlige = useCallback(() => {
     if (!email || !isAdmin) return;
@@ -335,7 +335,7 @@ export default function ProgramPage() {
   }, []);
 
   useEffect(() => {
-    if (familyToLoad && familyToLoad.includes("@")) {
+    if (familyToLoad) {
       setMembersLoading(true);
       fetch(`/api/families/email?email=${encodeURIComponent(familyToLoad)}`)
         .then((res) => (res.ok ? res.json() : []))
@@ -348,7 +348,7 @@ export default function ProgramPage() {
   }, [familyToLoad]);
 
   useEffect(() => {
-    if (!familyToLoad || !familyToLoad.includes("@")) {
+    if (!familyToLoad) {
       setFamilieloebInfo(null);
       return;
     }

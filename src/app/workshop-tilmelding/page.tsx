@@ -159,9 +159,7 @@ export default function WorkshopTilmeldingPage() {
       );
       if (workshopsDone) {
         goToAppRef.current(true);
-        return;
       }
-      if (hasRoster) setStep("workshops");
     },
     [syncDraftFromMembers]
   );
