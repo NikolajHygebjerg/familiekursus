@@ -86,8 +86,15 @@ function optionLabel(opt: WorkshopOptionDetail, member: FamilyMember): string {
 
 export default function WorkshopTilmeldingPage() {
   const router = useRouter();
-  const { email, familyName, setAuth, isAdmin, isAuthReady, needsWorkshopRegistration } =
-    useAuth();
+  const {
+    email,
+    familyName,
+    setAuth,
+    isAdmin,
+    adminNavn,
+    isAuthReady,
+    needsWorkshopRegistration,
+  } = useAuth();
   const [step, setStep] = useState<Step>("family");
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [options, setOptions] = useState<Record<WorkshopSlotKey, WorkshopOptionDetail[]>>({
@@ -115,8 +122,18 @@ export default function WorkshopTilmeldingPage() {
   soloWithoutAdultRef.current = soloWithoutAdult;
 
   const goToApp = useCallback(
-    async (syncAuth: boolean) => {
-      if (syncAuth && email) {
+    async (options?: { syncAuth?: boolean; registrationComplete?: boolean }) => {
+      const syncAuth = options?.syncAuth ?? true;
+      const registrationComplete = options?.registrationComplete ?? false;
+
+      if (!email) {
+        router.replace("/login");
+        return;
+      }
+
+      if (registrationComplete) {
+        setAuth(email, familyName ?? email, false, isAdmin, adminNavn);
+      } else if (syncAuth) {
         try {
           const res = await fetch("/api/auth", {
             method: "POST",
@@ -124,20 +141,22 @@ export default function WorkshopTilmeldingPage() {
             body: JSON.stringify({ action: "status", brugernavn: email }),
           });
           const data = res.ok ? await res.json() : null;
+          const needsReg = data ? Boolean(data.needsWorkshopRegistration) : true;
           setAuth(
             email,
             data?.familyName ?? familyName ?? email,
-            data ? Boolean(data.needsWorkshopRegistration) : false,
+            needsReg,
             Boolean(data?.isAdmin),
             data?.adminNavn ?? null
           );
         } catch {
-          setAuth(email, familyName || email, false);
+          setAuth(email, familyName || email, registrationComplete ? false : true, isAdmin, adminNavn);
         }
       }
+
       router.replace("/tilmeldte");
     },
-    [email, familyName, setAuth, router]
+    [email, familyName, setAuth, router, isAdmin, adminNavn]
   );
 
   const goToAppRef = useRef(goToApp);
@@ -184,7 +203,7 @@ export default function WorkshopTilmeldingPage() {
         (m) => m.workshop1 || m.workshop2 || m.workshop3 || m.workshop4
       );
       if (workshopsDone) {
-        goToAppRef.current(true);
+        goToAppRef.current({ registrationComplete: true, syncAuth: true });
       }
     },
     [syncDraftFromMembers]
@@ -249,7 +268,7 @@ export default function WorkshopTilmeldingPage() {
       return;
     }
     if (!needsWorkshopRegistration) {
-      goToApp(false);
+      goToApp({ syncAuth: false });
     }
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router, goToApp]);
 
@@ -674,18 +693,38 @@ export default function WorkshopTilmeldingPage() {
       setConflicts(null);
       setEscortQueue([]);
       try {
+        const currentDraft = draftRef.current;
+        const currentEscorts = externalEscortsRef.current;
+        const membersBody = members.map((m) => ({
+          navn: m.navn,
+          alder: m.alder,
+          type: m.type ?? null,
+          workshop1: currentDraft[m.navn]?.workshop1 || "",
+          workshop2: currentDraft[m.navn]?.workshop2 || "",
+          workshop3: currentDraft[m.navn]?.workshop3 || "",
+          workshop4: currentDraft[m.navn]?.workshop4 || "",
+          ledsager1: currentEscorts[m.navn]?.workshop1 || "",
+          ledsager2: currentEscorts[m.navn]?.workshop2 || "",
+          ledsager3: currentEscorts[m.navn]?.workshop3 || "",
+          ledsager4: currentEscorts[m.navn]?.workshop4 || "",
+        }));
+
         const res = await fetch("/api/workshop-register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             mode: "workshops",
             email,
-            members: membersPayload,
+            members: membersBody,
             acceptPartial,
             partialChoices,
           }),
         });
         const data = await res.json();
+        if (res.status === 403 && data.code === "ALREADY_REGISTERED") {
+          await goToApp({ registrationComplete: true, syncAuth: true });
+          return;
+        }
         if (res.status === 409 && data.code === "PARTIAL_CAPACITY") {
           setConflicts(data.conflicts as CapacityConflict[]);
           return;
@@ -711,15 +750,22 @@ export default function WorkshopTilmeldingPage() {
         }
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
-        await goToApp(true);
-        await fetchOptions();
+        if (data.saved === false) {
+          setError(
+            "Workshops er gemt, men ikke alle familiemedlemmer har valg på alle fire hold endnu. Tjek listen og prøv igen."
+          );
+          await fetchMembers({ setErrorOnFailure: false });
+          return;
+        }
+
+        await goToApp({ registrationComplete: true, syncAuth: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl");
       } finally {
         setSubmitting(false);
       }
     },
-    [email, members, rosterForEscort, membersPayload, goToApp, fetchOptions]
+    [email, members, rosterForEscort, goToApp, fetchMembers]
   );
 
   const acceptPartialForConflict = useCallback(
