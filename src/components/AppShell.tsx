@@ -7,7 +7,13 @@ import AppHeader from "./AppHeader";
 import BottomNav from "./BottomNav";
 import SupabaseSourceInfo from "./SupabaseSourceInfo";
 
-const PUBLIC_PATHS = ["/velkommen", "/log-ind", "/login", "/workshop-tilmelding"];
+const PUBLIC_PATHS = [
+  "/velkommen",
+  "/log-ind",
+  "/login",
+  "/workshop-tilmelding",
+  "/velkommen-til-app",
+];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

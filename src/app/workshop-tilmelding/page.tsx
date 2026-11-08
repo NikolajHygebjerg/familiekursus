@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { markPostRegistrationWelcome } from "@/lib/post-registration-welcome";
+import {
+  markPostRegistrationWelcome,
+  peekPostRegistrationWelcome,
+} from "@/lib/post-registration-welcome";
 import { DEFAULT_KURSUS_YEAR } from "@/lib/kursus-year";
 import type { WorkshopSlotKey } from "@/lib/airtable";
 import {
@@ -141,7 +145,9 @@ export default function WorkshopTilmeldingPage() {
       }
 
       if (registrationComplete) {
-        setAuth(email, familyName ?? email, false, isAdmin, adminNavn);
+        flushSync(() => {
+          setAuth(email, familyName ?? email, false, isAdmin, adminNavn);
+        });
         if (showPostRegistrationWelcome) {
           markPostRegistrationWelcome();
           router.replace("/velkommen-til-app");
@@ -275,7 +281,9 @@ export default function WorkshopTilmeldingPage() {
       return;
     }
     if (!needsWorkshopRegistration) {
-      router.replace("/tilmeldte");
+      router.replace(
+        peekPostRegistrationWelcome() ? "/velkommen-til-app" : "/tilmeldte"
+      );
     }
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 

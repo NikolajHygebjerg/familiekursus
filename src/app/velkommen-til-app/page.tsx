@@ -17,15 +17,16 @@ export default function VelkommenTilAppPage() {
       router.replace("/tilmeldte");
       return;
     }
+    const showWelcome = peekPostRegistrationWelcome();
+    if (showWelcome) {
+      setAllowed(true);
+      return;
+    }
     if (needsWorkshopRegistration) {
       router.replace("/workshop-tilmelding");
       return;
     }
-    if (!peekPostRegistrationWelcome()) {
-      router.replace("/tilmeldte");
-      return;
-    }
-    setAllowed(true);
+    router.replace("/tilmeldte");
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 
   if (!isAuthReady || !allowed) {
