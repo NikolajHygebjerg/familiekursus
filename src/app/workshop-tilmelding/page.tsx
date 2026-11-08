@@ -864,7 +864,7 @@ export default function WorkshopTilmeldingPage() {
                         }
                         className="flex-1 rounded-lg bg-amber-500 px-4 py-3 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
                       >
-                        Fortsæt til børnenes workshops
+                        Vælg workshops
                       </button>
                     </div>
                   </form>
