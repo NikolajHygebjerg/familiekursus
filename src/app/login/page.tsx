@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
-type Step = "brugernavn" | "code" | "create" | "setCode" | "glemtKode";
+type Step = "login" | "glemtKode";
 
 type AuthResult = {
   email: string;
@@ -44,7 +44,7 @@ export default function LoginPage() {
   const { setAuth, email, isAuthReady, needsWorkshopRegistration, isAdmin } = useAuth();
   const [brugernavnInput, setBrugernavnInput] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<Step>("brugernavn");
+  const [step, setStep] = useState<Step>("login");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginHistory, setLoginHistory] = useState<string[]>(() => {
@@ -60,15 +60,6 @@ export default function LoginPage() {
     }
   });
   const [showLoginSuggestions, setShowLoginSuggestions] = useState(false);
-  const [checkResult, setCheckResult] = useState<{
-    existsIn2026: boolean;
-    hasBruger: boolean;
-    needsSetCode: boolean;
-    nextStep: "code" | "setCode" | "create";
-    familyName: string | null;
-    needsWorkshopRegistration: boolean;
-    isAdmin?: boolean;
-  } | null>(null);
 
   const rememberLogin = useCallback((value: string) => {
     const login = value.trim();
@@ -93,43 +84,23 @@ export default function LoginPage() {
     )
   ).slice(0, 12);
 
-  const loginPayload = (action: string, extra?: Record<string, string>) =>
-    JSON.stringify({ action, brugernavn: brugernavnInput.trim(), ...extra });
-
-  const handleBrugernavnSubmit = useCallback(async () => {
-    if (!brugernavnInput.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: loginPayload("check"),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Fejl");
-      setCheckResult(data);
-      setStep(data.nextStep);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke tjekke brugernavn");
-    } finally {
-      setLoading(false);
-    }
-  }, [brugernavnInput]);
-
   const handleLogin = useCallback(async () => {
-    const e = brugernavnInput.trim().toLowerCase();
-    if (!e || !code.trim()) return;
+    const login = brugernavnInput.trim();
+    if (!login) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: loginPayload("login", { code: code.trim() }),
+        body: JSON.stringify({
+          action: "login",
+          brugernavn: login,
+          code: code.trim() || undefined,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Forkert brugernavn eller kode");
+      if (!res.ok) throw new Error(data.error || "Login fejlede");
       applyAuthAndRedirect(data, setAuth, router, rememberLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fejlede");
@@ -138,33 +109,9 @@ export default function LoginPage() {
     }
   }, [brugernavnInput, code, setAuth, router, rememberLogin]);
 
-  const handleCreateUser = useCallback(async () => {
-    const e = brugernavnInput.trim().toLowerCase();
-    if (!e || !code.trim() || code.length < 4) {
-      setError("Vælg en kode på mindst 4 tegn");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: loginPayload("create", { code: code.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Kunne ikke oprette bruger");
-      applyAuthAndRedirect(data, setAuth, router, rememberLogin);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Oprettelse fejlede");
-    } finally {
-      setLoading(false);
-    }
-  }, [brugernavnInput, code, setAuth, router, rememberLogin]);
-
   const handleGlemtKode = useCallback(async () => {
-    const e = brugernavnInput.trim().toLowerCase();
-    if (!e || !code.trim() || code.length < 4) {
+    const login = brugernavnInput.trim();
+    if (!login || !code.trim() || code.length < 4) {
       setError("Vælg en ny kode på mindst 4 tegn");
       return;
     }
@@ -174,7 +121,11 @@ export default function LoginPage() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: loginPayload("resetCode", { code: code.trim() }),
+        body: JSON.stringify({
+          action: "resetCode",
+          brugernavn: login,
+          code: code.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke nulstille kode");
@@ -185,37 +136,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   }, [brugernavnInput, code, setAuth, router, rememberLogin]);
-
-  const handleSetCode = useCallback(async () => {
-    const e = brugernavnInput.trim().toLowerCase();
-    if (!e || !code.trim() || code.length < 4) {
-      setError("Vælg en kode på mindst 4 tegn");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: loginPayload("setCode", { code: code.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Kunne ikke gemme kode");
-      applyAuthAndRedirect(data, setAuth, router, rememberLogin);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke gemme kode");
-    } finally {
-      setLoading(false);
-    }
-  }, [brugernavnInput, code, setAuth, router, rememberLogin]);
-
-  const reset = () => {
-    setStep("brugernavn");
-    setCode("");
-    setError(null);
-    setCheckResult(null);
-  };
 
   if (!isAuthReady || email) {
     return null;
@@ -238,17 +158,16 @@ export default function LoginPage() {
           Familiekursus
         </h1>
         <p className="mb-8 text-center text-slate-600">
-          Log ind med brugernavn og din personlige kode
+          Log ind med brugernavn. Kode er valgfri, medmindre du allerede har valgt en.
         </p>
 
-        {step === "brugernavn" && (
+        {step === "login" && (
           <>
             <label htmlFor="brugernavn" className="mb-1 block text-sm font-medium text-slate-700">
               Brugernavn
             </label>
             <p className="mb-3 text-sm text-slate-500">
-              Vælg et brugernavn, I husker — gerne det samme, som I brugte ved tilmeldingen til
-              familiekursus.
+              Vælg et brugernavn, I husker — gerne det samme som ved tilmelding til familiekursus.
             </p>
             <div className="relative">
               <input
@@ -261,7 +180,6 @@ export default function LoginPage() {
                 }}
                 onFocus={() => setShowLoginSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowLoginSuggestions(false), 150)}
-                onKeyDown={(e) => e.key === "Enter" && handleBrugernavnSubmit()}
                 placeholder="Jeres brugernavn"
                 className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 autoFocus
@@ -286,76 +204,50 @@ export default function LoginPage() {
                 </ul>
               )}
             </div>
-            <button
-              onClick={handleBrugernavnSubmit}
-              disabled={loading || !brugernavnInput.trim()}
-              className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
-            >
-              {loading ? "Tjekker..." : "Fortsæt"}
-            </button>
-          </>
-        )}
 
-        {(step === "code" || step === "setCode") && (
-          <>
-            <p className="mb-2 text-sm text-slate-600">
-              {step === "setCode"
-                ? checkResult?.existsIn2026
-                  ? "Velkommen! Vælg en personlig kode (mindst 4 tegn) — du gemmer den her og bruger den ved login fremover:"
-                  : "Vælg en personlig kode (mindst 4 tegn), som du vil bruge til at logge ind fremover:"
-                : "Indtast din kode:"}
+            <label htmlFor="kode" className="mb-1 block text-sm font-medium text-slate-700">
+              Kode <span className="font-normal text-slate-500">(valgfri)</span>
+            </label>
+            <p className="mb-2 text-sm text-slate-500">
+              Har du ikke valgt kode før, kan du logge ind uden. Vil du have en kode fremover, vælg
+              mindst 4 tegn her.
             </p>
             <input
+              id="kode"
               type="password"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (step === "code" ? handleLogin() : handleSetCode())}
-              placeholder="Kode"
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="Din kode"
               className="mb-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-              autoFocus
+              autoComplete="current-password"
             />
-            {step === "code" && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("glemtKode");
-                  setCode("");
-                  setError(null);
-                }}
-                className="mb-4 text-sm text-amber-600 hover:text-amber-700 hover:underline"
-              >
-                Glemt kode?
-              </button>
-            )}
-            {step === "setCode" && <div className="mb-4" />}
-            <div className="flex gap-2">
-              <button
-                onClick={reset}
-                className="rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Tilbage
-              </button>
-              <button
-                onClick={step === "code" ? handleLogin : handleSetCode}
-                disabled={loading || !code.trim() || (step === "setCode" && code.length < 4)}
-                className="flex-1 rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
-              >
-                {loading
-                  ? step === "setCode"
-                    ? "Gemmer..."
-                    : "Logger ind..."
-                  : step === "setCode"
-                    ? "Gem kode og log ind"
-                    : "Log ind"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStep("glemtKode");
+                setCode("");
+                setError(null);
+              }}
+              className="mb-4 text-sm text-amber-600 hover:text-amber-700 hover:underline"
+            >
+              Glemt kode?
+            </button>
+
+            <button
+              onClick={() => void handleLogin()}
+              disabled={loading || !brugernavnInput.trim()}
+              className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
+            >
+              {loading ? "Logger ind..." : "Log ind"}
+            </button>
           </>
         )}
 
         {step === "glemtKode" && (
           <>
             <p className="mb-4 text-sm text-slate-600">
-              Vælg en ny kode (mindst 4 tegn). Din gamle kode erstattes.
+              Vælg en ny kode (mindst 4 tegn). Den erstatter den gamle, hvis du havde en.
             </p>
             <input
               type="text"
@@ -375,7 +267,7 @@ export default function LoginPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  setStep("code");
+                  setStep("login");
                   setCode("");
                   setError(null);
                 }}
@@ -384,50 +276,11 @@ export default function LoginPage() {
                 Tilbage
               </button>
               <button
-                onClick={handleGlemtKode}
+                onClick={() => void handleGlemtKode()}
                 disabled={loading || !code.trim() || code.length < 4}
                 className="flex-1 rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
               >
-                {loading ? "Gemmer..." : "Nulstil kode"}
-              </button>
-            </div>
-          </>
-        )}
-
-        {step === "create" && (
-          <>
-            <p className="mb-4 text-sm text-slate-600">
-              Vælg en personlig kode (mindst 4 tegn). Systemet husker koden, så I kan logge ind med
-              brugernavn og kode fremover.
-            </p>
-            <input
-              type="text"
-              value={brugernavnInput}
-              readOnly
-              className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
-            />
-            <input
-              type="password"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreateUser()}
-              placeholder="Vælg en kode (min. 4 tegn)"
-              className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={reset}
-                className="rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Tilbage
-              </button>
-              <button
-                onClick={handleCreateUser}
-                disabled={loading || !code.trim() || code.length < 4}
-                className="flex-1 rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
-              >
-                {loading ? "Opretter..." : "Opret bruger"}
+                {loading ? "Gemmer..." : "Gem ny kode og log ind"}
               </button>
             </div>
           </>

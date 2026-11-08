@@ -712,13 +712,9 @@ export async function hasWorkshopRegistration(email: string, year: number): Prom
   const records = await fetchTableRecords(tableId);
   for (const record of records) {
     if (!loginMatchesRecord(record, email)) continue;
-    const hasWs =
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4) ||
-      getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
-    if (hasWs) return true;
+    const navn = getFieldValue(record, NAVN_FIELDS);
+    const alder = getFieldValue(record, ALDER_FIELD_OPTIONS);
+    if (navn?.trim() && alder?.trim()) return true;
   }
   return false;
 }

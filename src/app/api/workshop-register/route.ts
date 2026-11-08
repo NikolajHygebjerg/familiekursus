@@ -1,7 +1,6 @@
 import {
   createAirtableRecord,
   getYearTableId,
-  WORKSHOP_FIELDS,
 } from "@/lib/airtable";
 import { getKursusYear } from "@/lib/kursus-year";
 import { NextResponse } from "next/server";
@@ -10,62 +9,47 @@ const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
 const BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login"];
 const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
-const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
-
-function fieldName(key: keyof typeof WORKSHOP_FIELDS): string {
-  return WORKSHOP_FIELDS[key][0];
-}
+const ALDER_FIELDS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const {
-      email,
-      navn,
-      type,
-      workshop1,
-      workshop2,
-      workshop3,
-      workshop4,
-      voksen,
-      familie,
-    } = body as {
+    const { email, navn, alder } = body as {
       email: string;
       navn: string;
-      type?: string;
-      workshop1?: string;
-      workshop2?: string;
-      workshop3?: string;
-      workshop4?: string;
-      voksen?: string;
-      familie?: string;
+      alder?: string | number;
     };
 
     if (!email?.trim()) {
       return NextResponse.json({ error: "Brugernavn mangler" }, { status: 400 });
     }
-    if (!navn?.trim()) {
-      return NextResponse.json({ error: "Navn mangler" }, { status: 400 });
+    const fornavn = navn?.trim();
+    if (!fornavn) {
+      return NextResponse.json({ error: "Fornavn mangler" }, { status: 400 });
+    }
+
+    const alderRaw = alder === undefined || alder === null ? "" : String(alder).trim();
+    if (!alderRaw) {
+      return NextResponse.json({ error: "Alder mangler" }, { status: 400 });
+    }
+    const alderNum = parseInt(alderRaw.replace(",", "."), 10);
+    if (!Number.isFinite(alderNum) || alderNum < 0 || alderNum > 120) {
+      return NextResponse.json({ error: "Angiv en gyldig alder" }, { status: 400 });
     }
 
     const year = getKursusYear();
     const tableId = getYearTableId(year);
-
     const login = email.trim();
-    const fields: Record<string, string> = {
+
+    const fields: Record<string, string | number> = {
       [BRUGERNAVN_FIELDS[0]]: login,
       [EMAIL_FIELDS[0]]: login,
-      [NAVN_FIELDS[0]]: navn.trim(),
+      [FAMILIE_FIELDS[0]]: login,
+      [NAVN_FIELDS[0]]: fornavn,
+      [ALDER_FIELDS[0]]: alderNum,
     };
-    if (type?.trim()) fields[BARN_VOKSEN_FIELDS[0]] = type.trim();
-    if (familie?.trim()) fields[FAMILIE_FIELDS[0]] = familie.trim();
-    if (workshop1?.trim()) fields[fieldName("workshop1")] = workshop1.trim();
-    if (workshop2?.trim()) fields[fieldName("workshop2")] = workshop2.trim();
-    if (workshop3?.trim()) fields[fieldName("workshop3")] = workshop3.trim();
-    if (workshop4?.trim()) fields[fieldName("workshop4")] = workshop4.trim();
-    if (voksen?.trim()) fields[fieldName("voksen")] = voksen.trim();
 
     await createAirtableRecord(tableId, fields);
 

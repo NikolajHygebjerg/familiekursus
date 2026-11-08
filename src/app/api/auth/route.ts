@@ -8,6 +8,7 @@ import {
   normalizeLoginName,
 } from "@/lib/airtable";
 import { getKursusYear } from "@/lib/kursus-year";
+import { getSupabaseConfigError, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 const TABLE_BRUGERE = "Brugere";
@@ -42,17 +43,39 @@ async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: str
   };
 }
 
-function brugerCreateFields(login: string, code: string): Record<string, unknown> {
-  return {
+function brugerCreateFields(login: string, code?: string): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
     [BRUGERE_LOGIN_FIELDS.email]: login,
     [BRUGERE_LOGIN_FIELDS.brugernavn]: login,
-    [BRUGERE_LOGIN_FIELDS.kode]: code,
     [BRUGERE_LOGIN_FIELDS.status]: "Bruger",
   };
+  const c = code?.trim();
+  if (c && c.length >= 4) {
+    fields[BRUGERE_LOGIN_FIELDS.kode] = c;
+  }
+  return fields;
+}
+
+function parseOptionalCode(code: string | undefined): {
+  provided: boolean;
+  value: string;
+  invalidShort: boolean;
+} {
+  const value = code?.trim() ?? "";
+  if (!value) return { provided: false, value: "", invalidShort: false };
+  if (value.length < 4) return { provided: true, value, invalidShort: true };
+  return { provided: true, value, invalidShort: false };
 }
 
 export async function POST(request: Request) {
   try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        { error: getSupabaseConfigError() ?? "Supabase er ikke konfigureret" },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const { action, email: rawLogin, brugernavn: rawBrugernavn, code } = body as {
       action: "login" | "check" | "create" | "setCode" | "resetCode";
@@ -159,20 +182,37 @@ export async function POST(request: Request) {
     }
 
     if (action === "login") {
-      const bruger = await getBrugerByLogin(login);
-
-      if (!bruger?.code) {
+      const parsed = parseOptionalCode(code);
+      if (parsed.invalidShort) {
         return NextResponse.json(
-          { error: "Du skal vælge en kode først. Gå tilbage og indtast dit brugernavn." },
-          { status: 403 }
+          { error: "Koden skal være mindst 4 tegn — eller lad feltet stå tomt." },
+          { status: 400 }
         );
       }
 
-      if (code !== bruger.code) {
-        return NextResponse.json({ error: "Forkert kode" }, { status: 401 });
+      const bruger = await getBrugerByLogin(login);
+
+      if (bruger?.code) {
+        if (!parsed.provided) {
+          return NextResponse.json({ error: "Indtast din kode" }, { status: 400 });
+        }
+        if (parsed.value !== bruger.code) {
+          return NextResponse.json({ error: "Forkert kode" }, { status: 401 });
+        }
+        return NextResponse.json(await buildAuthResponse(login, bruger.isAdmin, bruger.adminNavn));
       }
 
-      return NextResponse.json(await buildAuthResponse(login, bruger.isAdmin, bruger.adminNavn));
+      if (bruger?.recordId) {
+        if (parsed.provided) {
+          await updateAirtableRecord(TABLE_BRUGERE, bruger.recordId, {
+            [BRUGERE_LOGIN_FIELDS.kode]: parsed.value,
+          });
+        }
+        return NextResponse.json(await buildAuthResponse(login, bruger.isAdmin, bruger.adminNavn));
+      }
+
+      await createAirtableRecord(TABLE_BRUGERE, brugerCreateFields(login, parsed.value || undefined));
+      return NextResponse.json(await buildAuthResponse(login, false));
     }
 
     return NextResponse.json({ error: "Ukendt handling" }, { status: 400 });
