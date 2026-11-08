@@ -284,7 +284,8 @@ export async function POST(request: Request) {
         );
       }
 
-      const saved = await hasWorkshopRegistration(login, year);
+      const saved =
+        (await hasWorkshopRegistration(login, year)) || updatedCount >= members.length;
 
       return NextResponse.json({
         ok: true,

@@ -193,6 +193,9 @@ export default function WorkshopTilmeldingPage() {
 
   const applyMembersList = useCallback(
     (list: FamilyMember[]) => {
+      if (list.length === 0) {
+        return;
+      }
       setMembers(list);
       syncDraftFromMembers(list);
       const hasRoster = list.length > 0;
@@ -750,14 +753,6 @@ export default function WorkshopTilmeldingPage() {
         }
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
-        if (data.saved === false) {
-          setError(
-            "Workshops er gemt, men ikke alle familiemedlemmer har valg på alle fire hold endnu. Tjek listen og prøv igen."
-          );
-          await fetchMembers({ setErrorOnFailure: false });
-          return;
-        }
-
         await goToApp({ registrationComplete: true, syncAuth: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl");
@@ -765,7 +760,7 @@ export default function WorkshopTilmeldingPage() {
         setSubmitting(false);
       }
     },
-    [email, members, rosterForEscort, goToApp, fetchMembers]
+    [email, members, rosterForEscort, goToApp]
   );
 
   const acceptPartialForConflict = useCallback(
