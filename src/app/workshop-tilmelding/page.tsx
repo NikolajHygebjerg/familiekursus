@@ -753,6 +753,20 @@ export default function WorkshopTilmeldingPage() {
         }
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
+        const registrationComplete =
+          data.registrationComplete === true || data.saved === true;
+        if (!registrationComplete) {
+          const year =
+            typeof data.kursusYear === "number" ? data.kursusYear : DEFAULT_KURSUS_YEAR;
+          setError(
+            `Workshops kunne ikke bekræftes i databasen (kursusår ${year}). ` +
+              (data.familyMemberCount === 0
+                ? "Ingen familiemedlemmer fundet for dit login — tjek at Vercel har samme Supabase-forbindelse som udvikling (se .env.example), og at KURSUS_YEAR=2027 er sat."
+                : "Tjek at alle i familien har valg på alle fire hold, og prøv igen.")
+          );
+          return;
+        }
+
         await goToApp({ registrationComplete: true, syncAuth: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl");

@@ -284,12 +284,16 @@ export async function POST(request: Request) {
         );
       }
 
-      const saved =
-        (await hasWorkshopRegistration(login, year)) || updatedCount >= members.length;
+      const registrationComplete = await hasWorkshopRegistration(login, year);
+      const familyMemberCount = (await getFamilyMembersByLogin(login)).length;
 
       return NextResponse.json({
         ok: true,
-        saved,
+        saved: registrationComplete,
+        registrationComplete,
+        kursusYear: year,
+        updatedCount,
+        familyMemberCount,
         skipped: Array.from(skippedByConflict),
       });
     }
