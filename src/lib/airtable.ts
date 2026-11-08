@@ -1,4 +1,4 @@
-import { appendVoksencafeProgram } from "@/data/program";
+import { UGEPROGRAM, appendVoksencafeProgram } from "@/data/program";
 import { normalizeMoedOsStoredImage, toAbsoluteMoedOsImageUrl } from "@/lib/blob-config";
 import {
   createFkRecord,
@@ -2046,6 +2046,17 @@ function timeToSortMinutes(tid: string): number {
 }
 
 export async function getProgram(): Promise<DagProgramFromAirtable[]> {
+  // 2027: program ligger i src/data/program.ts (PDF) indtil det evt. flyttes til Program-tabellen.
+  if (getKursusYear() >= 2027) {
+    return appendVoksencafeProgram(
+      UGEPROGRAM.map((day) => ({
+        dag: day.dag,
+        dato: day.dato,
+        program: day.program.map((item) => ({ ...item })),
+      }))
+    ) as DagProgramFromAirtable[];
+  }
+
   const records = await fetchTableRecords(TABLE_PROGRAM);
 
   const dagOrder = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
