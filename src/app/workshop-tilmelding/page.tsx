@@ -266,17 +266,33 @@ export default function WorkshopTilmeldingPage() {
   const submitFamily = useCallback(
     async (continueToWorkshops: boolean) => {
       if (!email) return;
-      if (continueToWorkshops && !fornavn.trim() && !alder.trim()) {
-        const list = await fetchMembers();
-        if (list.length === 0) {
-          setError("Tilføj mindst én person i familien, før I vælger workshops.");
+
+      const hasCompleteForm = Boolean(fornavn.trim() && alder.trim());
+      const formEmpty = !fornavn.trim() && !alder.trim();
+
+      if (continueToWorkshops && (formEmpty || !hasCompleteForm)) {
+        if (members.length > 0) {
+          setError(null);
+          resetFamilyForm();
+          setStep("workshops");
+          await fetchOptions();
           return;
         }
-        setStep("workshops");
-        await fetchOptions();
+        if (formEmpty) {
+          const list = await fetchMembers();
+          if (list.length === 0) {
+            setError("Tilføj mindst én person i familien, før I vælger workshops.");
+            return;
+          }
+          setStep("workshops");
+          await fetchOptions();
+          return;
+        }
+        setError("Udfyld fornavn og alder");
         return;
       }
-      if (!fornavn.trim() || !alder.trim()) {
+
+      if (!hasCompleteForm) {
         setError("Udfyld fornavn og alder");
         return;
       }
