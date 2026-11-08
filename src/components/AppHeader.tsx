@@ -29,7 +29,7 @@ export default function AppHeader() {
         type="button"
         onClick={() => {
           logout();
-          router.push("/login");
+          router.push("/velkommen");
         }}
         className="shrink-0 text-sm font-medium text-amber-600 hover:text-amber-700"
       >

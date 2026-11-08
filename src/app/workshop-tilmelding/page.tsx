@@ -127,7 +127,7 @@ export default function WorkshopTilmeldingPage() {
       const registrationComplete = options?.registrationComplete ?? false;
 
       if (!email) {
-        router.replace("/login");
+        router.replace("/velkommen");
         return;
       }
 
@@ -253,7 +253,7 @@ export default function WorkshopTilmeldingPage() {
   useEffect(() => {
     if (!isAuthReady) return;
     if (!email) {
-      router.replace("/login");
+      router.replace("/velkommen");
       return;
     }
     if (isAdmin) {

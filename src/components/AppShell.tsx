@@ -8,7 +8,7 @@ import BottomNav from "./BottomNav";
 import AddToHomeScreenGuide from "./AddToHomeScreenGuide";
 import SupabaseSourceInfo from "./SupabaseSourceInfo";
 
-const PUBLIC_PATHS = ["/login", "/workshop-tilmelding"];
+const PUBLIC_PATHS = ["/velkommen", "/log-ind", "/login", "/workshop-tilmelding"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,7 +19,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isAuthReady || isPublic) return;
     if (!email) {
-      router.replace("/login");
+      router.replace("/velkommen");
       return;
     }
     if (
