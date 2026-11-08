@@ -551,50 +551,14 @@ export default function WorkshopTilmeldingPage() {
     []
   );
 
-  const continueFromChildrenToAdults = useCallback(() => {
-    const liveDraft = draftRef.current;
-    const kids = members.filter((m) => !memberIsAdult(m));
-
-    if (kids.length === 0) {
-      setStep("adults");
-      setError(null);
-      return;
-    }
-
-    for (const child of kids) {
-      const d = liveDraft[child.navn];
-      if (!d?.workshop1 || !d?.workshop2 || !d?.workshop3 || !d?.workshop4) {
-        setError(`Vælg workshop 1–4 for ${child.navn}`);
-        return;
-      }
-    }
-
-    const minViolations = listWorkshopMinAgeViolations(members, liveDraft);
-    if (minViolations.length > 0) {
-      const v = minViolations[0];
-      setError(
-        `${v.navn} kan ikke tilmeldes ${v.workshopName} (${SLOT_LABELS[v.slot]}): minimum ${v.minAge} år.`
-      );
-      return;
-    }
-
-    const escortGaps = listAdultEscortGaps(
-      rosterForEscort,
-      liveDraft,
-      externalEscortsRef.current,
-      soloWithoutAdultRef.current
-    );
-    if (escortGaps.length > 0) {
-      const g = escortGaps[0];
-      setError(
-        `${g.childNavn} skal have en voksen på ${SLOT_LABELS[g.slot]} (${g.workshopName}) — vælg ledsager, eller kryds «Deltager uden voksen» hvis barnet er gammel nok.`
-      );
-      return;
-    }
-
-    setError(null);
-    setStep("adults");
-  }, [members, rosterForEscort]);
+  const adultNeedsMoreWorkshopChoices = useCallback(
+    (liveDraft: WorkshopDraft) =>
+      adultsInFamily.some((adult) => {
+        const d = liveDraft[adult.navn];
+        return !d?.workshop1 || !d?.workshop2 || !d?.workshop3 || !d?.workshop4;
+      }),
+    [adultsInFamily]
+  );
 
   const assignFamilyAdultToGap = useCallback(
     (gap: AdultEscortGap, adultNavn: string) => {
@@ -787,6 +751,66 @@ export default function WorkshopTilmeldingPage() {
     [submitWorkshops]
   );
 
+  const continueFromChildrenToAdults = useCallback(() => {
+    const liveDraft = draftRef.current;
+    const kids = members.filter((m) => !memberIsAdult(m));
+
+    if (kids.length === 0) {
+      setError(null);
+      if (adultNeedsMoreWorkshopChoices(liveDraft)) {
+        setStep("adults");
+      } else {
+        void submitWorkshops(false);
+      }
+      return;
+    }
+
+    for (const child of kids) {
+      const d = liveDraft[child.navn];
+      if (!d?.workshop1 || !d?.workshop2 || !d?.workshop3 || !d?.workshop4) {
+        setError(`Vælg workshop 1–4 for ${child.navn}`);
+        return;
+      }
+    }
+
+    const minViolations = listWorkshopMinAgeViolations(members, liveDraft);
+    if (minViolations.length > 0) {
+      const v = minViolations[0];
+      setError(
+        `${v.navn} kan ikke tilmeldes ${v.workshopName} (${SLOT_LABELS[v.slot]}): minimum ${v.minAge} år.`
+      );
+      return;
+    }
+
+    const escortGaps = listAdultEscortGaps(
+      rosterForEscort,
+      liveDraft,
+      externalEscortsRef.current,
+      soloWithoutAdultRef.current
+    );
+    if (escortGaps.length > 0) {
+      const g = escortGaps[0];
+      setError(
+        `${g.childNavn} skal have en voksen på ${SLOT_LABELS[g.slot]} (${g.workshopName}) — vælg ledsager, eller kryds «Deltager uden voksen» hvis barnet er gammel nok.`
+      );
+      return;
+    }
+
+    setError(null);
+    if (adultNeedsMoreWorkshopChoices(liveDraft)) {
+      setStep("adults");
+    } else {
+      void submitWorkshops(false);
+    }
+  }, [members, rosterForEscort, adultNeedsMoreWorkshopChoices, submitWorkshops]);
+
+  const childrenStepPrimaryLabel = useMemo(() => {
+    if (submitting) return "Gemmer...";
+    return adultNeedsMoreWorkshopChoices(draft)
+      ? "Fortsæt til voksnes workshops"
+      : "Bekræft workshopvalg";
+  }, [draft, adultNeedsMoreWorkshopChoices, submitting]);
+
   if (!email) return null;
 
   return (
@@ -882,9 +906,10 @@ export default function WorkshopTilmeldingPage() {
                 <button
                   type="button"
                   onClick={() => continueFromChildrenToAdults()}
-                  className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600"
+                  disabled={submitting}
+                  className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
                 >
-                  Fortsæt til voksnes workshops
+                  {childrenStepPrimaryLabel}
                 </button>
                 <button
                   type="button"
@@ -922,7 +947,7 @@ export default function WorkshopTilmeldingPage() {
                   disabled={submitting}
                   className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
                 >
-                  Fortsæt til voksnes workshops
+                  {childrenStepPrimaryLabel}
                 </button>
 
                 <button
