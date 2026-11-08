@@ -1048,6 +1048,29 @@ function resolveFieldName(allFieldNames: Set<string>, possibleNames: string[]): 
   return possibleNames[0];
 }
 
+/** Løser faktiske feltnavne i årets deltager-tabel (Supabase/Airtable). */
+export async function getParticipantFieldResolvers(tableId: string) {
+  const fieldNames = await getTableFieldNames(tableId);
+  const workshop: Record<string, string> = {};
+  for (const [slot, opts] of Object.entries(WORKSHOP_FIELDS)) {
+    workshop[slot] = resolveFieldName(fieldNames, opts);
+  }
+  const ledsager: Record<string, string> = {};
+  for (const [slot, opts] of Object.entries(WORKSHOP_LEDSAGER_FIELDS)) {
+    ledsager[slot] = resolveFieldName(fieldNames, opts);
+  }
+  return {
+    navn: resolveFieldName(fieldNames, NAVN_FIELDS),
+    alder: resolveFieldName(fieldNames, ALDER_FIELD_OPTIONS),
+    barnVoksen: resolveFieldName(fieldNames, BARN_VOKSEN_FIELDS),
+    brugernavn: resolveFieldName(fieldNames, BRUGERNAVN_FIELDS),
+    email: resolveFieldName(fieldNames, EMAIL_FIELDS),
+    familie: resolveFieldName(fieldNames, FAMILIE_FIELDS),
+    workshop,
+    ledsager,
+  };
+}
+
 function getCurrentYear(): number {
   return getKursusYear();
 }
@@ -1311,7 +1334,20 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
 }
 
 export async function getFamilyMembersByEmail(email: string): Promise<FamilyMember[]> {
-  return getFamilyMembersByLogin(email);
+  const login = normalizeLoginName(email);
+  const byLogin = await getFamilyMembersByLogin(login);
+  if (byLogin.length > 0) return byLogin;
+
+  const familyLabel = await getFamilyByLogin(login);
+  if (
+    familyLabel &&
+    normalizeLoginName(familyLabel).toLowerCase() !== login.toLowerCase()
+  ) {
+    const byFamily = await getFamilyMembers(familyLabel);
+    if (byFamily.length > 0) return byFamily;
+  }
+
+  return byLogin;
 }
 
 function mergeFamilyMemberRow(a: FamilyMember, b: FamilyMember): FamilyMember {
@@ -1426,8 +1462,8 @@ function toAgeBucket(age: number): string {
 }
 
 function parseAge(raw: string | null): number | null {
-  if (!raw) return null;
-  const n = parseInt(raw.trim(), 10);
+  if (raw == null || raw === "") return null;
+  const n = parseInt(String(raw).trim(), 10);
   return Number.isNaN(n) ? null : n;
 }
 

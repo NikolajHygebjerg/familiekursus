@@ -2,14 +2,14 @@ import {
   createAirtableRecord,
   deleteAirtableRecord,
   getFamilyMembersByLogin,
+  getParticipantFieldResolvers,
   getParticipantRecordIdsByLogin,
   getYearTableId,
   hasWorkshopRegistration,
   listParticipantRecordIdsForName,
   normalizeLoginName,
+  normalizeMemberName,
   updateAirtableRecord,
-  WORKSHOP_FIELDS,
-  WORKSHOP_LEDSAGER_FIELDS,
   type WorkshopSlotKey,
 } from "@/lib/airtable";
 import {
@@ -19,6 +19,7 @@ import {
   formatExternalEscortLabel,
   listAdultEscortGaps,
   listWorkshopMinAgeViolations,
+  mergeRosterWithClientMembers,
 } from "@/lib/workshop-adult-escort";
 import { validateWorkshopPicksForLogin } from "@/lib/workshop-capacity";
 import { getKursusYear } from "@/lib/kursus-year";
@@ -31,12 +32,10 @@ const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const ALDER_FIELDS = ["Alder", "A Alder", "#Alder", "alder", "Age", "age"];
 const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
 
-function fieldName(key: WorkshopSlotKey): string {
-  return WORKSHOP_FIELDS[key][0];
-}
-
 type MemberWorkshops = {
   navn: string;
+  alder?: number | null;
+  type?: string | null;
   workshop1?: string;
   workshop2?: string;
   workshop3?: string;
@@ -47,10 +46,6 @@ type MemberWorkshops = {
   ledsager3?: string;
   ledsager4?: string;
 };
-
-function ledsagerFieldName(slot: EscortWorkshopSlot): string {
-  return WORKSHOP_LEDSAGER_FIELDS[slot][0];
-}
 
 function buildWorkshopDraftFromPayload(members: MemberWorkshops[]): WorkshopChoiceDraft {
   const draft: WorkshopChoiceDraft = {};
@@ -127,6 +122,7 @@ export async function POST(request: Request) {
     const login = normalizeLoginName(email);
 
     if (mode === "workshops") {
+      const fieldResolvers = await getParticipantFieldResolvers(tableId);
       const alreadyRegistered = await hasWorkshopRegistration(login, year);
       if (alreadyRegistered) {
         return NextResponse.json(
@@ -147,7 +143,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Ingen deltagere angivet" }, { status: 400 });
       }
 
-      const roster = await getFamilyMembersByLogin(login);
+      const roster = mergeRosterWithClientMembers(
+        await getFamilyMembersByLogin(login),
+        members
+      );
       const workshopDraft = buildWorkshopDraftFromPayload(members);
       const externalEscorts = buildExternalEscortsFromPayload(members);
       const minAgeViolations = listWorkshopMinAgeViolations(roster, workshopDraft);
@@ -239,28 +238,32 @@ export async function POST(request: Request) {
         }
       }
 
+      let updatedCount = 0;
       for (const member of members) {
         const navn = member.navn?.trim();
         if (!navn) continue;
-        const recordId = recordIds.get(navn.toLowerCase());
+        const recordId = recordIds.get(normalizeMemberName(navn));
         if (!recordId) continue;
 
         const fields: Record<string, string> = {};
         const slots: WorkshopSlotKey[] = ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"];
         for (const slot of slots) {
-          const sk = `${navn.toLowerCase()}::${slot}`;
+          const sk = `${normalizeMemberName(navn)}::${slot}`;
+          const fieldKey = fieldResolvers.workshop[slot];
+          if (!fieldKey) continue;
           if (skippedByConflict.has(sk)) {
-            fields[fieldName(slot)] = "";
+            fields[fieldKey] = "";
             continue;
           }
           const value = member[slot]?.trim();
-          if (value) fields[fieldName(slot)] = value;
+          if (value) fields[fieldKey] = value;
         }
 
         const escortSlots: EscortWorkshopSlot[] = ["workshop1", "workshop2", "workshop3", "workshop4"];
         for (const slot of escortSlots) {
           const extName = member[LEDSAGER_PAYLOAD_KEY[slot]]?.trim();
-          const ledsagerField = ledsagerFieldName(slot);
+          const ledsagerField = fieldResolvers.ledsager[slot];
+          if (!ledsagerField) continue;
           if (extName) {
             fields[ledsagerField] = formatExternalEscortLabel(extName);
           } else {
@@ -270,11 +273,22 @@ export async function POST(request: Request) {
 
         if (Object.keys(fields).length > 0) {
           await updateAirtableRecord(tableId, recordId, fields);
+          updatedCount += 1;
         }
       }
 
+      if (updatedCount === 0) {
+        return NextResponse.json(
+          { error: "Kunne ikke gemme workshopvalg — kontakt kursuslederen." },
+          { status: 500 }
+        );
+      }
+
+      const saved = await hasWorkshopRegistration(login, year);
+
       return NextResponse.json({
         ok: true,
+        saved,
         skipped: Array.from(skippedByConflict),
       });
     }
@@ -299,17 +313,18 @@ export async function POST(request: Request) {
     }
 
     const type = alderNum >= 18 ? "Voksen" : "Barn";
+    const fieldResolvers = await getParticipantFieldResolvers(tableId);
 
     const existingIds = await listParticipantRecordIdsForName(login, fornavn);
     if (existingIds.length > 0) {
       const primaryId = existingIds[0];
       await updateAirtableRecord(tableId, primaryId, {
-        [NAVN_FIELDS[0]]: fornavn,
-        [ALDER_FIELDS[0]]: alderNum,
-        [BARN_VOKSEN_FIELDS[0]]: type,
-        [BRUGERNAVN_FIELDS[0]]: login,
-        [EMAIL_FIELDS[0]]: login,
-        [FAMILIE_FIELDS[0]]: login,
+        [fieldResolvers.navn]: fornavn,
+        [fieldResolvers.alder]: alderNum,
+        [fieldResolvers.barnVoksen]: type,
+        [fieldResolvers.brugernavn]: login,
+        [fieldResolvers.email]: login,
+        [fieldResolvers.familie]: login,
       });
       for (let i = 1; i < existingIds.length; i++) {
         await deleteAirtableRecord(tableId, existingIds[i]);
@@ -323,12 +338,12 @@ export async function POST(request: Request) {
     }
 
     const fields: Record<string, string | number> = {
-      [BRUGERNAVN_FIELDS[0]]: login,
-      [EMAIL_FIELDS[0]]: login,
-      [FAMILIE_FIELDS[0]]: login,
-      [NAVN_FIELDS[0]]: fornavn,
-      [ALDER_FIELDS[0]]: alderNum,
-      [BARN_VOKSEN_FIELDS[0]]: type,
+      [fieldResolvers.brugernavn]: login,
+      [fieldResolvers.email]: login,
+      [fieldResolvers.familie]: login,
+      [fieldResolvers.navn]: fornavn,
+      [fieldResolvers.alder]: alderNum,
+      [fieldResolvers.barnVoksen]: type,
     };
 
     await createAirtableRecord(tableId, fields);

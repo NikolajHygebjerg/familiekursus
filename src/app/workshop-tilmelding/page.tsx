@@ -15,6 +15,7 @@ import {
   isWorkshopBlockedForMember,
   listAdultEscortGaps,
   listWorkshopMinAgeViolations,
+  mergeRosterWithClientMembers,
   memberIsAdult,
   memberNeedsAdultOnWorkshop,
   parseExternalEscortName,
@@ -104,9 +105,25 @@ export default function WorkshopTilmeldingPage() {
   const [externalEscorts, setExternalEscorts] = useState<ExternalEscortDraft>({});
 
   const goToApp = useCallback(
-    (syncAuth: boolean) => {
+    async (syncAuth: boolean) => {
       if (syncAuth && email) {
-        setAuth(email, familyName || email, false);
+        try {
+          const res = await fetch("/api/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "status", brugernavn: email }),
+          });
+          const data = res.ok ? await res.json() : null;
+          setAuth(
+            email,
+            data?.familyName ?? familyName ?? email,
+            data ? Boolean(data.needsWorkshopRegistration) : false,
+            Boolean(data?.isAdmin),
+            data?.adminNavn ?? null
+          );
+        } catch {
+          setAuth(email, familyName || email, false);
+        }
       }
       router.replace("/tilmeldte");
     },
@@ -321,6 +338,8 @@ export default function WorkshopTilmeldingPage() {
     () =>
       members.map((m) => ({
         navn: m.navn,
+        alder: m.alder,
+        type: m.type ?? null,
         workshop1: draft[m.navn]?.workshop1 || "",
         workshop2: draft[m.navn]?.workshop2 || "",
         workshop3: draft[m.navn]?.workshop3 || "",
@@ -408,7 +427,8 @@ export default function WorkshopTilmeldingPage() {
         return;
       }
 
-      const escortGaps = listAdultEscortGaps(members, draft, externalEscorts);
+      const rosterForEscort = mergeRosterWithClientMembers(members, members);
+      const escortGaps = listAdultEscortGaps(rosterForEscort, draft, externalEscorts);
       if (escortGaps.length > 0) {
         setEscortQueue(escortGaps);
         return;
@@ -456,7 +476,7 @@ export default function WorkshopTilmeldingPage() {
         }
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
-        goToApp(true);
+        await goToApp(true);
         await fetchOptions();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl");

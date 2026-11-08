@@ -142,6 +142,23 @@ export function listWorkshopMinAgeViolations(
   return violations;
 }
 
+/** Alder/type fra klient når databasen mangler felter endnu. */
+export function mergeRosterWithClientMembers<T extends RosterMember>(
+  roster: T[],
+  client: Array<{ navn: string; alder?: number | null; type?: string | null }>
+): T[] {
+  const byNavn = new Map(client.map((c) => [c.navn.trim().toLowerCase(), c]));
+  return roster.map((member) => {
+    const fromClient = byNavn.get(member.navn.trim().toLowerCase());
+    if (!fromClient) return member;
+    return {
+      ...member,
+      alder: member.alder ?? (fromClient.alder != null ? fromClient.alder : null),
+      type: member.type ?? fromClient.type ?? null,
+    };
+  });
+}
+
 export function listAdultEscortGaps(
   members: RosterMember[],
   workshopDraft: WorkshopChoiceDraft,
@@ -163,9 +180,11 @@ export function listAdultEscortGaps(
       const external = externalEscorts[member.navn]?.[slot]?.trim();
       if (external) continue;
 
-      const hasFamilyAdultOnWorkshop = adults.some(
-        (adult) => workshopDraft[adult.navn]?.[slot]?.trim() === workshopName
-      );
+      const workshopNorm = normalizeWorkshopName(workshopName);
+      const hasFamilyAdultOnWorkshop = adults.some((adult) => {
+        const adultChoice = workshopDraft[adult.navn]?.[slot]?.trim();
+        return adultChoice != null && normalizeWorkshopName(adultChoice) === workshopNorm;
+      });
       if (!hasFamilyAdultOnWorkshop) {
         gaps.push({
           childNavn: member.navn,
