@@ -1,0 +1,14 @@
+---
+description: Commit og push til origin efter hver rettelse i repoet
+alwaysApply: true
+---
+
+# Commit og push efter rettelser
+
+Når du har lavet kodeændringer i Familiekursus-projektet:
+
+1. Kør build (eller relevant verifikation) når det giver mening.
+2. Commit kun relevante filer — ikke lokale xlsx, Office-låsefiler eller engangsscripts medmindre brugeren beder om det.
+3. Push til `origin` på aktuel branch (typisk `main`) med det samme efter commit, medmindre brugeren eksplicit siger andet.
+
+Brugeren forventer at rettelser lander på GitHub/Vercel uden at skulle bede om commit/push hver gang.
