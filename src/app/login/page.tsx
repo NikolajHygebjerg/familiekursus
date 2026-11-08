@@ -16,7 +16,7 @@ type AuthResult = {
 };
 
 function postLoginPath(data: AuthResult): string {
-  if (data.isAdmin) return "/program";
+  if (data.isAdmin) return "/";
   if (data.needsWorkshopRegistration) return "/workshop-tilmelding";
   return "/tilmeldte";
 }
@@ -77,7 +77,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (!isAuthReady || !email) return;
     router.replace(
-      !isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : isAdmin ? "/program" : "/tilmeldte"
+      !isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : isAdmin ? "/" : "/tilmeldte"
     );
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 

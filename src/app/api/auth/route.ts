@@ -7,8 +7,13 @@ import {
   createAirtableRecord,
   isFamilySelfDeleteCode,
   updateAirtableRecord,
+  upsertAppSuperAdminBruger,
   normalizeLoginName,
 } from "@/lib/airtable";
+import {
+  getAppSuperAdminBootstrapCode,
+  isAppSuperAdmin,
+} from "@/lib/super-admin";
 import { getKursusYear } from "@/lib/kursus-year";
 import { getSupabaseConfigError, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
@@ -29,18 +34,19 @@ function parseLogin(raw: string | undefined): string | null {
 }
 
 async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: string | null = null) {
+  const effectiveAdmin = isAdmin || isAppSuperAdmin(login);
   const inYearTable = await loginExistsInYearTable(login);
-  const familyName = isAdmin ? null : inYearTable ? await getFamilyByLogin(login) : login;
-  const needsReg = isAdmin
+  const familyName = effectiveAdmin ? null : inYearTable ? await getFamilyByLogin(login) : login;
+  const needsReg = effectiveAdmin
     ? false
     : !(await hasWorkshopRegistration(login, getKursusYear()));
 
   return {
     ok: true,
     email: login,
-    familyName: isAdmin ? "Kursusleder" : familyName,
-    isAdmin,
-    adminNavn: isAdmin ? adminNavn : null,
+    familyName: effectiveAdmin ? "Kursusleder" : familyName,
+    isAdmin: effectiveAdmin,
+    adminNavn: effectiveAdmin ? adminNavn : null,
     needsWorkshopRegistration: needsReg,
   };
 }
@@ -202,7 +208,7 @@ export async function POST(request: Request) {
 
       if (parsed.provided && isFamilySelfDeleteCode(parsed.value)) {
         const bruger = await getBrugerByLogin(login);
-        if (bruger?.isAdmin) {
+        if (bruger?.isAdmin || isAppSuperAdmin(login)) {
           return NextResponse.json(
             { error: "Kursusleder-konto kan ikke slettes med koden Slet." },
             { status: 403 }
@@ -225,6 +231,22 @@ export async function POST(request: Request) {
           deletedParticipantRows: result.deletedParticipantRows,
           deletedBrugerRows: result.deletedBrugerRows,
         });
+      }
+
+      if (isAppSuperAdmin(login)) {
+        const bruger = await getBrugerByLogin(login);
+        const expectedCode = bruger?.code?.trim() || getAppSuperAdminBootstrapCode();
+        if (!parsed.provided) {
+          return NextResponse.json({ error: "Indtast din kode" }, { status: 400 });
+        }
+        if (parsed.value !== expectedCode) {
+          return NextResponse.json({ error: "Forkert kode" }, { status: 401 });
+        }
+        await upsertAppSuperAdminBruger(login, parsed.value);
+        const updated = await getBrugerByLogin(login);
+        return NextResponse.json(
+          await buildAuthResponse(login, true, updated?.adminNavn ?? "Nikolaj")
+        );
       }
 
       const bruger = await getBrugerByLogin(login);

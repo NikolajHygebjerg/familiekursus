@@ -10,6 +10,7 @@ import {
 } from "@/lib/fk-records";
 import { getKursusYear } from "@/lib/kursus-year";
 import { getStaticMoedOsNameToSlugMap } from "@/lib/moed-os";
+import { getAppSuperAdminBootstrapCode, isAppSuperAdmin } from "@/lib/super-admin";
 
 const AIRTABLE_BASE_ID = "appWYXnvNcnZS3yPu";
 // Deltagerliste pr. år (Supabase table_key participants_YYYY). Legacy Airtable-ID kun til migrering.
@@ -795,12 +796,44 @@ function isAdminBrugerstatus(raw: string | null): boolean {
   return value === "admin" || value === "kursusleder";
 }
 
+function resolveBrugerIsAdmin(login: string, brugerstatus: string | null): boolean {
+  if (isAppSuperAdmin(login)) return true;
+  return isAdminBrugerstatus(brugerstatus);
+}
+
+/** Sikrer super-admin-række i Brugere (Admin + kode). */
+export async function upsertAppSuperAdminBruger(login: string, code: string): Promise<void> {
+  const normalized = normalizeLoginName(login);
+  if (!isAppSuperAdmin(normalized)) return;
+
+  const kode = code.trim();
+  if (kode.length < 4) {
+    throw new Error("Super-admin kode skal være mindst 4 tegn");
+  }
+
+  const existing = await getBrugerByLogin(normalized);
+  const fields: Record<string, unknown> = {
+    Email: normalized,
+    Brugernavn: normalized,
+    Brugerstatus: "Admin",
+    Kode: kode,
+    Navne: existing?.adminNavn?.trim() || "Nikolaj",
+  };
+
+  if (existing?.recordId) {
+    await updateAirtableRecord(TABLE_BRUGERE, existing.recordId, fields);
+  } else {
+    await createAirtableRecord(TABLE_BRUGERE, fields);
+  }
+}
+
 export async function getBrugerByEmail(email: string): Promise<BrugerInfo | null> {
   return getBrugerByLogin(email);
 }
 
 export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null> {
-  const target = normalizeLoginName(login).toLowerCase();
+  const normalized = normalizeLoginName(login);
+  const target = normalized.toLowerCase();
   try {
     const records = await fetchTableRecords(TABLE_BRUGERE);
     let fallback: BrugerInfo | null = null;
@@ -810,15 +843,38 @@ export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null
         getEmailFromRecord(record);
       if (brugerLogin?.toLowerCase() !== target) continue;
       const code = getFieldValue(record, KODE_FIELDS)?.trim() || null;
-      const isAdmin = isAdminBrugerstatus(getFieldValue(record, BRUGERSTATUS_FIELDS));
+      const status = getFieldValue(record, BRUGERSTATUS_FIELDS);
+      const isAdmin = resolveBrugerIsAdmin(normalized, status);
       const adminNavn = getFieldValue(record, BRUGERE_NAVN_FIELDS)?.trim() || null;
       const info: BrugerInfo = { recordId: record.id, code, isAdmin, adminNavn };
       if (code) return info;
       fallback = info;
     }
-    return fallback;
+    if (fallback) {
+      return {
+        ...fallback,
+        isAdmin: resolveBrugerIsAdmin(normalized, null) || fallback.isAdmin,
+      };
+    }
+    if (isAppSuperAdmin(normalized)) {
+      return {
+        recordId: "",
+        code: null,
+        isAdmin: true,
+        adminNavn: "Nikolaj",
+      };
+    }
+    return null;
   } catch {
     // Brugere table might not exist
+  }
+  if (isAppSuperAdmin(normalized)) {
+    return {
+      recordId: "",
+      code: null,
+      isAdmin: true,
+      adminNavn: "Nikolaj",
+    };
   }
   return null;
 }
