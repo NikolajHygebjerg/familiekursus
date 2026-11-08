@@ -2,6 +2,7 @@ import {
   createAirtableRecord,
   deleteAirtableRecord,
   getFamilyMembersByLogin,
+  markBrugerWorkshopsTilmeldt,
   getParticipantFieldResolvers,
   getParticipantRecordIdsByLogin,
   getYearTableId,
@@ -313,6 +314,9 @@ export async function POST(request: Request) {
 
       const familyMemberCount = (await getFamilyMembersByLogin(login)).length;
       const registrationComplete = await hasWorkshopRegistration(login, year);
+      if (registrationComplete) {
+        await markBrugerWorkshopsTilmeldt(login);
+      }
 
       return NextResponse.json({
         ok: true,

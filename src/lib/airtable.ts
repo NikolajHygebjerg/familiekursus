@@ -735,6 +735,11 @@ function getActiveYearTableId(): string {
   return getYearTableId(getKursusYear());
 }
 
+function fieldHasText(value: unknown): boolean {
+  if (value == null) return false;
+  return String(value).trim().length > 0;
+}
+
 export async function hasFamilyRoster(login: string, year: number): Promise<boolean> {
   const tableId = getYearTableId(year);
   const records = await fetchTableRecords(tableId);
@@ -742,7 +747,7 @@ export async function hasFamilyRoster(login: string, year: number): Promise<bool
     if (!loginMatchesRecord(record, login)) continue;
     const navn = getFieldValue(record, NAVN_FIELDS);
     const alder = getFieldValue(record, ALDER_FIELD_OPTIONS);
-    if (navn?.trim() && alder?.trim()) return true;
+    if (navn?.trim() && fieldHasText(alder)) return true;
   }
   return false;
 }
@@ -759,6 +764,36 @@ export async function hasWorkshopRegistration(login: string, year: number): Prom
       Boolean(m.workshop3?.trim()) &&
       Boolean(m.workshop4?.trim())
   );
+}
+
+const WORKSHOPS_TILMELDT_FIELDS = ["WorkshopTilmeldt", "Workshops tilmeldt", "workshops_tilmeldt"];
+
+function parseWorkshopsTilmeldtFlag(raw: string | null | undefined): boolean {
+  if (!raw?.trim()) return false;
+  const s = raw.trim().toLowerCase();
+  return s === "ja" || s === "true" || s === "1" || s === "x" || s === "yes";
+}
+
+/** Bruger har gennemført workshop-flow (database + evt. flag på Brugere). */
+export async function hasCompletedWorkshopRegistration(
+  login: string,
+  year: number
+): Promise<boolean> {
+  const bruger = await getBrugerByLogin(login);
+  if (bruger?.workshopsTilmeldt) return true;
+  const complete = await hasWorkshopRegistration(login, year);
+  if (complete) {
+    void markBrugerWorkshopsTilmeldt(login).catch(() => undefined);
+  }
+  return complete;
+}
+
+export async function markBrugerWorkshopsTilmeldt(login: string): Promise<void> {
+  const bruger = await getBrugerByLogin(login);
+  if (!bruger?.recordId) return;
+  await updateAirtableRecord(TABLE_BRUGERE, bruger.recordId, {
+    WorkshopTilmeldt: "Ja",
+  });
 }
 
 export async function getParticipantRecordIdsByLogin(
@@ -789,6 +824,7 @@ export interface BrugerInfo {
   code: string | null;
   isAdmin: boolean;
   adminNavn: string | null;
+  workshopsTilmeldt: boolean;
 }
 
 function isAdminBrugerstatus(raw: string | null): boolean {
@@ -846,7 +882,10 @@ export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null
       const status = getFieldValue(record, BRUGERSTATUS_FIELDS);
       const isAdmin = resolveBrugerIsAdmin(normalized, status);
       const adminNavn = getFieldValue(record, BRUGERE_NAVN_FIELDS)?.trim() || null;
-      const info: BrugerInfo = { recordId: record.id, code, isAdmin, adminNavn };
+      const workshopsTilmeldt = parseWorkshopsTilmeldtFlag(
+        getFieldValue(record, WORKSHOPS_TILMELDT_FIELDS)
+      );
+      const info: BrugerInfo = { recordId: record.id, code, isAdmin, adminNavn, workshopsTilmeldt };
       if (code) return info;
       fallback = info;
     }
@@ -862,6 +901,7 @@ export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null
         code: null,
         isAdmin: true,
         adminNavn: "Nikolaj",
+        workshopsTilmeldt: false,
       };
     }
     return null;
@@ -874,6 +914,7 @@ export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null
       code: null,
       isAdmin: true,
       adminNavn: "Nikolaj",
+      workshopsTilmeldt: false,
     };
   }
   return null;
@@ -1470,12 +1511,6 @@ function mergeFamilyMemberRow(a: FamilyMember, b: FamilyMember): FamilyMember {
 }
 
 export async function getFamilyMembersByLogin(login: string): Promise<FamilyMember[]> {
-  const counts = await countFkRecordsByTableKey();
-  const participantsKey = `participants_${getKursusYear()}`;
-  if ((counts[participantsKey] ?? 0) === 0) {
-    return [];
-  }
-
   const records = await fetchAllRecords();
   const byName = new Map<string, FamilyMember>();
 

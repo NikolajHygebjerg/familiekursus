@@ -3,7 +3,7 @@ import {
   getFamilyByLogin,
   getBrugerByLogin,
   loginExistsInYearTable,
-  hasWorkshopRegistration,
+  hasCompletedWorkshopRegistration,
   createAirtableRecord,
   isFamilySelfDeleteCode,
   updateAirtableRecord,
@@ -53,7 +53,7 @@ async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: str
   }
   const needsReg = effectiveAdmin
     ? false
-    : !(await hasWorkshopRegistration(login, getKursusYear()));
+    : !(await hasCompletedWorkshopRegistration(login, getKursusYear()));
 
   return {
     ok: true,
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       const brugerExists = !!bruger?.recordId;
       const familyName = inYearTable ? await getFamilyByLogin(login) : login;
       const isAdmin = bruger?.isAdmin ?? false;
-      const needsReg = isAdmin ? false : !(await hasWorkshopRegistration(login, getKursusYear()));
+      const needsReg = isAdmin ? false : !(await hasCompletedWorkshopRegistration(login, getKursusYear()));
       const needsSetCode = !hasCode && (brugerExists || inYearTable);
 
       if (hasCode) {
