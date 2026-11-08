@@ -11,7 +11,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Email mangler" }, { status: 400 });
     }
     const members = await getFamilyMembersByEmail(normalizeLoginName(email));
-    return NextResponse.json(members);
+    return NextResponse.json(members, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (error) {
     console.error("Families by email API fejl:", error);
     return NextResponse.json(

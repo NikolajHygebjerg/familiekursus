@@ -75,6 +75,27 @@ const LEDSAGER_PAYLOAD_KEY: Record<
   workshop4: "ledsager4",
 };
 
+function rosterMemberPayload(
+  fornavn: string,
+  alderNum: number,
+  type: string
+): Record<string, string | number | null> {
+  return {
+    navn: fornavn,
+    alder: alderNum,
+    type,
+    workshop1: null,
+    workshop2: null,
+    workshop3: null,
+    workshop4: null,
+    voksen: null,
+    ledsager1: null,
+    ledsager2: null,
+    ledsager3: null,
+    ledsager4: null,
+  };
+}
+
 function buildExternalEscortsFromPayload(members: MemberWorkshops[]): ExternalEscortDraft {
   const external: ExternalEscortDraft = {};
   const slots: EscortWorkshopSlot[] = ["workshop1", "workshop2", "workshop3", "workshop4"];
@@ -297,6 +318,7 @@ export async function POST(request: Request) {
         ok: true,
         updated: true,
         message: `${fornavn} findes allerede — alder er opdateret.`,
+        member: rosterMemberPayload(fornavn, alderNum, type),
       });
     }
 
@@ -311,7 +333,10 @@ export async function POST(request: Request) {
 
     await createAirtableRecord(tableId, fields);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      member: rosterMemberPayload(fornavn, alderNum, type),
+    });
   } catch (error) {
     console.error("Workshop register API fejl:", error);
     return NextResponse.json(

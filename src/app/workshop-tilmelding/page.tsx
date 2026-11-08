@@ -116,6 +116,7 @@ export default function WorkshopTilmeldingPage() {
 
   const goToAppRef = useRef(goToApp);
   goToAppRef.current = goToApp;
+  const membersFetchGen = useRef(0);
 
   const syncDraftFromMembers = useCallback((mems: FamilyMember[]) => {
     const next: WorkshopDraft = {};
@@ -165,25 +166,36 @@ export default function WorkshopTilmeldingPage() {
     [syncDraftFromMembers]
   );
 
-  const fetchMembers = useCallback(async (): Promise<FamilyMember[]> => {
-    if (!email) return [];
-    try {
-      const res = await fetch(`/api/families/email?email=${encodeURIComponent(email)}`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(
-          typeof body?.error === "string" ? body.error : "Kunne ikke hente familiemedlemmer"
-        );
+  const fetchMembers = useCallback(
+    async (options?: { setErrorOnFailure?: boolean }): Promise<FamilyMember[]> => {
+      if (!email) return [];
+      const gen = ++membersFetchGen.current;
+      const setErrorOnFailure = options?.setErrorOnFailure !== false;
+      try {
+        const res = await fetch(`/api/families/email?email=${encodeURIComponent(email)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof body?.error === "string" ? body.error : "Kunne ikke hente familiemedlemmer"
+          );
+        }
+        const data = await res.json();
+        const list = Array.isArray(data) ? (data as FamilyMember[]) : [];
+        if (gen === membersFetchGen.current) {
+          applyMembersList(list);
+        }
+        return list;
+      } catch (err) {
+        if (setErrorOnFailure && gen === membersFetchGen.current) {
+          setError(err instanceof Error ? err.message : "Kunne ikke hente familiemedlemmer");
+        }
+        return [];
       }
-      const data = await res.json();
-      const list = Array.isArray(data) ? (data as FamilyMember[]) : [];
-      applyMembersList(list);
-      return list;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke hente familiemedlemmer");
-      return [];
-    }
-  }, [email, applyMembersList]);
+    },
+    [email, applyMembersList]
+  );
 
   const fetchOptions = useCallback(() => {
     return fetch(`/api/workshop-options?year=${DEFAULT_KURSUS_YEAR}&detailed=1`)
@@ -276,7 +288,26 @@ export default function WorkshopTilmeldingPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Fejl ved tilmelding");
 
-        const list = await fetchMembers();
+        const savedMember = data.member as FamilyMember | undefined;
+        let list = await fetchMembers({ setErrorOnFailure: false });
+        if (list.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          list = await fetchMembers({ setErrorOnFailure: false });
+        }
+        if (list.length === 0 && savedMember?.navn?.trim()) {
+          const key = savedMember.navn.trim().toLowerCase();
+          list = [
+            ...members.filter((m) => m.navn.trim().toLowerCase() !== key),
+            {
+              ...savedMember,
+              workshop1: savedMember.workshop1 ?? null,
+              workshop2: savedMember.workshop2 ?? null,
+              workshop3: savedMember.workshop3 ?? null,
+              workshop4: savedMember.workshop4 ?? null,
+            },
+          ].sort((a, b) => a.navn.localeCompare(b.navn, "da"));
+          applyMembersList(list);
+        }
         resetFamilyForm();
         if (continueToWorkshops) {
           if (list.length === 0) {
@@ -292,7 +323,7 @@ export default function WorkshopTilmeldingPage() {
         setSubmitting(false);
       }
     },
-    [email, fornavn, alder, fetchMembers, fetchOptions, resetFamilyForm]
+    [email, fornavn, alder, members, fetchMembers, fetchOptions, resetFamilyForm, applyMembersList]
   );
 
   const membersPayload = useMemo(
