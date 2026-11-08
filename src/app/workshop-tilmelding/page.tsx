@@ -898,8 +898,8 @@ export default function WorkshopTilmeldingPage() {
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Børnenes workshops</h1>
             <p className="mb-4 text-sm text-slate-600">
               Vælg workshop for hvert barn. Er barnet under 10 år skal der vælges en voksen der deltager sammen med
-              barnet. Fra 10 år kan man vælge at barnet deltager uden voksen (dog kræver adventurerace en voksen hvis
-              man er under 15 år).
+              barnet. Fra 10 år kan man vælge at barnet deltager uden voksen (dog kræver adventurerace at man er minimum
+              10 år og sammen med en voksen hvis man er 10-15 år).
             </p>
 
             {loading ? (
