@@ -102,7 +102,6 @@ export default function WorkshopTilmeldingPage() {
   const [conflicts, setConflicts] = useState<CapacityConflict[] | null>(null);
   const [escortQueue, setEscortQueue] = useState<AdultEscortGap[]>([]);
   const [externalEscorts, setExternalEscorts] = useState<ExternalEscortDraft>({});
-  const [showAddMemberForm, setShowAddMemberForm] = useState(true);
 
   const goToApp = useCallback(
     (syncAuth: boolean) => {
@@ -237,15 +236,9 @@ export default function WorkshopTilmeldingPage() {
     if (step !== "workshops" || loading) return;
     if (members.length === 0) {
       setStep("family");
-      setShowAddMemberForm(true);
       setError((prev) => prev ?? "Tilføj familiemedlemmer under Familie, før I vælger workshops.");
     }
   }, [step, loading, members.length]);
-
-  useEffect(() => {
-    if (members.length > 0) setShowAddMemberForm(false);
-    else setShowAddMemberForm(true);
-  }, [members.length]);
 
   const resetFamilyForm = useCallback(() => {
     setFornavn("");
@@ -498,12 +491,8 @@ export default function WorkshopTilmeldingPage() {
             </p>
 
             {members.length > 0 && (
-              <section className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
-                <h2 className="mb-1 text-sm font-semibold text-emerald-900">Jeres familie er gemt</h2>
-                <p className="mb-3 text-sm text-emerald-800">
-                  Navn og alder huskes — I behøver ikke indtaste dem igen. Samme fornavn opdateres i
-                  stedet for at lave en dublet.
-                </p>
+              <section className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
+                <h2 className="mb-2 text-sm font-semibold text-emerald-900">Tilføjede personer</h2>
                 <ul className="divide-y divide-emerald-100 text-sm text-slate-800">
                   {members.map((m) => (
                     <li key={m.navn} className="flex justify-between py-2">
@@ -521,30 +510,10 @@ export default function WorkshopTilmeldingPage() {
               <p className="text-slate-500">Henter...</p>
             ) : (
               <>
-                {members.length > 0 && !showAddMemberForm && (
-                  <div className="flex flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void submitFamily(true)}
-                      disabled={submitting}
-                      className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-                    >
-                      Fortsæt til workshopvalg
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddMemberForm(true)}
-                      className="text-sm text-amber-700 hover:underline"
-                    >
-                      Tilføj endnu en person
-                    </button>
-                  </div>
-                )}
-                {showAddMemberForm && (
-                  <form
-                    onSubmit={(e) => e.preventDefault()}
-                    className="space-y-4 rounded-xl bg-white p-6 shadow-lg"
-                  >
+                <form
+                  onSubmit={(e) => e.preventDefault()}
+                  className="space-y-4 rounded-xl bg-white p-6 shadow-lg"
+                >
                     <FamilyMemberFields
                       fornavn={fornavn}
                       alder={alder}
@@ -573,20 +542,7 @@ export default function WorkshopTilmeldingPage() {
                         Fortsæt til workshopvalg
                       </button>
                     </div>
-                    {members.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddMemberForm(false);
-                          resetFamilyForm();
-                        }}
-                        className="text-sm text-slate-500 hover:text-slate-700"
-                      >
-                        Annuller
-                      </button>
-                    )}
                   </form>
-                )}
               </>
             )}
           </>
