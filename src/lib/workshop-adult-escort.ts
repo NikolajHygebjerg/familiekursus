@@ -66,6 +66,13 @@ export function memberIsAdult(member: RosterMember): boolean {
   return member.type?.trim().toLowerCase() === "voksen";
 }
 
+export const FAMILY_ROSTER_NEEDS_ADULT_MESSAGE =
+  "Tilføj mindst én voksen (18 år eller derover). En familie kan ikke bestå af kun børn.";
+
+export function familyRosterHasAdult(members: RosterMember[]): boolean {
+  return members.some((m) => memberIsAdult(m));
+}
+
 export function memberIsYoungChild(member: RosterMember): boolean {
   return member.alder != null && member.alder < YOUNG_CHILD_AGE_MAX_EXCLUSIVE;
 }

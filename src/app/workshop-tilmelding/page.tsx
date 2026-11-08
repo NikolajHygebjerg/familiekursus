@@ -21,6 +21,8 @@ import {
   listChildEscortDecisionGaps,
   listWorkshopMinAgeViolations,
   mergeRosterWithClientMembers,
+  familyRosterHasAdult,
+  FAMILY_ROSTER_NEEDS_ADULT_MESSAGE,
   memberIsAdult,
   memberNeedsAdultOnWorkshop,
   parseExternalEscortName,
@@ -297,6 +299,28 @@ export default function WorkshopTilmeldingPage() {
     setError(null);
   }, []);
 
+  const rosterHasAdultIncludingForm = useCallback(
+    (list: FamilyMember[], includePendingForm: boolean) => {
+      const projected: FamilyMember[] = [...list];
+      if (includePendingForm && fornavn.trim() && alder.trim()) {
+        const alderNum = parseInt(alder.trim().replace(",", "."), 10);
+        if (Number.isFinite(alderNum)) {
+          projected.push({
+            navn: fornavn.trim(),
+            alder: alderNum,
+            type: alderNum >= 18 ? "Voksen" : "Barn",
+            workshop1: null,
+            workshop2: null,
+            workshop3: null,
+            workshop4: null,
+          });
+        }
+      }
+      return familyRosterHasAdult(projected);
+    },
+    [fornavn, alder]
+  );
+
   const submitFamily = useCallback(
     async (continueToWorkshops: boolean) => {
       if (!email) return;
@@ -306,6 +330,10 @@ export default function WorkshopTilmeldingPage() {
 
       if (continueToWorkshops && (formEmpty || !hasCompleteForm)) {
         if (members.length > 0) {
+          if (!familyRosterHasAdult(members)) {
+            setError(FAMILY_ROSTER_NEEDS_ADULT_MESSAGE);
+            return;
+          }
           setError(null);
           resetFamilyForm();
           setStep("children");
@@ -328,6 +356,10 @@ export default function WorkshopTilmeldingPage() {
 
       if (!hasCompleteForm) {
         setError("Udfyld fornavn og alder");
+        return;
+      }
+      if (continueToWorkshops && !rosterHasAdultIncludingForm(members, true)) {
+        setError(FAMILY_ROSTER_NEEDS_ADULT_MESSAGE);
         return;
       }
       setSubmitting(true);
@@ -372,6 +404,10 @@ export default function WorkshopTilmeldingPage() {
             setError("Kunne ikke gemme familiemedlem — prøv igen.");
             return;
           }
+          if (!familyRosterHasAdult(list)) {
+            setError(FAMILY_ROSTER_NEEDS_ADULT_MESSAGE);
+            return;
+          }
           setStep("children");
           await fetchOptions();
         }
@@ -381,8 +417,27 @@ export default function WorkshopTilmeldingPage() {
         setSubmitting(false);
       }
     },
-    [email, fornavn, alder, members, fetchMembers, fetchOptions, resetFamilyForm, applyMembersList]
+    [
+      email,
+      fornavn,
+      alder,
+      members,
+      fetchMembers,
+      fetchOptions,
+      resetFamilyForm,
+      applyMembersList,
+      rosterHasAdultIncludingForm,
+    ]
   );
+
+  const canContinueToWorkshops = useMemo(() => {
+    const formStarted = Boolean(fornavn.trim() || alder.trim());
+    if (formStarted) {
+      if (!fornavn.trim() || !alder.trim()) return false;
+      return rosterHasAdultIncludingForm(members, true);
+    }
+    return members.length > 0 && familyRosterHasAdult(members);
+  }, [members, fornavn, alder, rosterHasAdultIncludingForm]);
 
   const membersPayload = useMemo(
     () =>
@@ -848,7 +903,8 @@ export default function WorkshopTilmeldingPage() {
           <>
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Familie</h1>
             <p className="mb-6 text-sm text-slate-600">
-              Indtast fornavn og alder på alle familiemedlemmer du vil vælge workshop for
+              Indtast fornavn og alder på alle familiemedlemmer, I vil vælge workshop for. Mindst én
+              skal være voksen (18+).
             </p>
 
             {members.length > 0 && (
@@ -894,10 +950,7 @@ export default function WorkshopTilmeldingPage() {
                       <button
                         type="button"
                         onClick={() => void submitFamily(true)}
-                        disabled={
-                          submitting ||
-                          (members.length === 0 && (!fornavn.trim() || !alder.trim()))
-                        }
+                        disabled={submitting || !canContinueToWorkshops}
                         className="flex-1 rounded-lg bg-amber-500 px-4 py-3 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
                       >
                         Vælg workshops

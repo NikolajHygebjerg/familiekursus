@@ -22,6 +22,8 @@ import {
   listAdultEscortGaps,
   listWorkshopMinAgeViolations,
   mergeRosterWithClientMembers,
+  familyRosterHasAdult,
+  FAMILY_ROSTER_NEEDS_ADULT_MESSAGE,
 } from "@/lib/workshop-adult-escort";
 import { validateWorkshopPicksForLogin } from "@/lib/workshop-capacity";
 import { getKursusYear } from "@/lib/kursus-year";
@@ -149,6 +151,12 @@ export async function POST(request: Request) {
         await getFamilyMembersByLogin(login),
         members
       );
+      if (!familyRosterHasAdult(roster)) {
+        return NextResponse.json(
+          { error: FAMILY_ROSTER_NEEDS_ADULT_MESSAGE, code: "FAMILY_NEEDS_ADULT" },
+          { status: 409 }
+        );
+      }
       const workshopDraft = buildWorkshopDraftFromPayload(members);
       const externalEscorts = buildExternalEscortsFromPayload(members);
       const rosterByNavn = new Map(roster.map((m) => [m.navn.trim().toLowerCase(), m]));
