@@ -21,10 +21,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
-    if (!isAdmin && needsWorkshopRegistration) {
+    if (
+      !isAdmin &&
+      needsWorkshopRegistration &&
+      pathname !== "/workshop-tilmelding"
+    ) {
       router.replace("/workshop-tilmelding");
     }
-  }, [isAuthReady, isPublic, email, isAdmin, needsWorkshopRegistration, router]);
+  }, [isAuthReady, isPublic, email, isAdmin, needsWorkshopRegistration, router, pathname]);
 
   if (isPublic) {
     return <>{children}</>;

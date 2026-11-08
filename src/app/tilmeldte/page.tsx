@@ -79,6 +79,7 @@ export default function TilmeldtePage() {
 
   useEffect(() => {
     if (!familyLogin) return;
+    let cancelled = false;
     void fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -86,17 +87,20 @@ export default function TilmeldtePage() {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!data?.email) return;
+        if (cancelled || !data?.email) return;
         setAuth(
           data.email,
-          data.familyName ?? familyName ?? data.email,
+          data.familyName ?? data.email,
           Boolean(data.needsWorkshopRegistration),
           Boolean(data.isAdmin),
           data.adminNavn ?? null
         );
       })
       .catch(() => undefined);
-  }, [familyLogin, familyName, setAuth]);
+    return () => {
+      cancelled = true;
+    };
+  }, [familyLogin, setAuth]);
 
   useEffect(() => {
     if (isKursusleder) {

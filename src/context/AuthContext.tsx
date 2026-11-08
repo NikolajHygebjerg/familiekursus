@@ -125,6 +125,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           adminNavn: admin ? (adminNavn ?? prev.adminNavn ?? null) : null,
           needsWorkshopRegistration: admin ? false : needsWorkshopRegistration,
         };
+        if (
+          prev.email === state.email &&
+          prev.familyName === state.familyName &&
+          prev.isAdmin === state.isAdmin &&
+          prev.adminNavn === state.adminNavn &&
+          prev.needsWorkshopRegistration === state.needsWorkshopRegistration
+        ) {
+          return prev;
+        }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         return state;
       });

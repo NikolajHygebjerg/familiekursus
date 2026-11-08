@@ -198,16 +198,6 @@ export default function WorkshopTilmeldingPage() {
       }
       setMembers(list);
       syncDraftFromMembers(list);
-      const hasRoster = list.length > 0;
-      const workshopsDone =
-        hasRoster &&
-        list.every((m) => m.workshop1 && m.workshop2 && m.workshop3 && m.workshop4);
-      const workshopsStarted = list.some(
-        (m) => m.workshop1 || m.workshop2 || m.workshop3 || m.workshop4
-      );
-      if (workshopsDone) {
-        goToAppRef.current({ registrationComplete: true, syncAuth: true });
-      }
     },
     [syncDraftFromMembers]
   );
@@ -271,9 +261,9 @@ export default function WorkshopTilmeldingPage() {
       return;
     }
     if (!needsWorkshopRegistration) {
-      goToApp({ syncAuth: false });
+      router.replace("/tilmeldte");
     }
-  }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router, goToApp]);
+  }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 
   useEffect(() => {
     if (!isAuthReady || !email || isAdmin) return;
