@@ -71,10 +71,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const stored = readStoredAuth();
     setAuthState(stored);
-    if (stored.email) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+
+    const finish = () => setIsAuthReady(true);
+
+    if (!stored.email) {
+      finish();
+      return;
     }
-    setIsAuthReady(true);
+
+    fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status", brugernavn: stored.email }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.email) {
+          finish();
+          return;
+        }
+        const admin = Boolean(data.isAdmin);
+        const state: AuthState = {
+          email: data.email,
+          familyName: admin ? KURSUSLEDER : (data.familyName ?? stored.familyName),
+          isAdmin: admin,
+          adminNavn: admin ? (data.adminNavn ?? stored.adminNavn) : null,
+          needsWorkshopRegistration: admin ? false : Boolean(data.needsWorkshopRegistration),
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        setAuthState(state);
+        finish();
+      })
+      .catch(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+        finish();
+      });
   }, []);
 
   const setAuth = useCallback(

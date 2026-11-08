@@ -707,16 +707,48 @@ function getActiveYearTableId(): string {
   return getYearTableId(getKursusYear());
 }
 
-export async function hasWorkshopRegistration(email: string, year: number): Promise<boolean> {
+export async function hasFamilyRoster(login: string, year: number): Promise<boolean> {
   const tableId = getYearTableId(year);
   const records = await fetchTableRecords(tableId);
   for (const record of records) {
-    if (!loginMatchesRecord(record, email)) continue;
+    if (!loginMatchesRecord(record, login)) continue;
     const navn = getFieldValue(record, NAVN_FIELDS);
     const alder = getFieldValue(record, ALDER_FIELD_OPTIONS);
     if (navn?.trim() && alder?.trim()) return true;
   }
   return false;
+}
+
+export async function hasWorkshopRegistration(login: string, year: number): Promise<boolean> {
+  if (!(await hasFamilyRoster(login, year))) return false;
+  const members = await getFamilyMembersByLogin(login);
+  if (members.length === 0) return false;
+  return members.every(
+    (m) =>
+      Boolean(m.workshop1?.trim()) &&
+      Boolean(m.workshop2?.trim()) &&
+      Boolean(m.workshop3?.trim()) &&
+      Boolean(m.workshop4?.trim())
+  );
+}
+
+export async function getParticipantRecordIdsByLogin(
+  login: string
+): Promise<Map<string, string>> {
+  const records = await fetchAllRecords();
+  const map = new Map<string, string>();
+  for (const record of records) {
+    if (!loginMatchesRecord(record, login)) continue;
+    const navn = getFieldValue(record, NAVN_FIELDS);
+    if (!navn?.trim()) continue;
+    map.set(navn.trim().toLowerCase(), record.id);
+  }
+  return map;
+}
+
+export async function getParticipantRecordId(login: string, navn: string): Promise<string | null> {
+  const map = await getParticipantRecordIdsByLogin(login);
+  return map.get(navn.trim().toLowerCase()) ?? null;
 }
 
 const KODE_FIELDS = ["A Kode", "Kode", "kode", "Code", "code"];

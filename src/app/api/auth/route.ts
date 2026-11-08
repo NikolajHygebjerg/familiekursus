@@ -78,7 +78,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { action, email: rawLogin, brugernavn: rawBrugernavn, code } = body as {
-      action: "login" | "check" | "create" | "setCode" | "resetCode";
+      action: "login" | "check" | "create" | "setCode" | "resetCode" | "status";
       email?: string;
       brugernavn?: string;
       code?: string;
@@ -87,6 +87,14 @@ export async function POST(request: Request) {
     const login = parseLogin(rawBrugernavn ?? rawLogin);
     if (!login) {
       return NextResponse.json({ error: "Brugernavn mangler" }, { status: 400 });
+    }
+
+    if (action === "status") {
+      const bruger = await getBrugerByLogin(login);
+      const isAdmin = bruger?.isAdmin ?? false;
+      return NextResponse.json(
+        await buildAuthResponse(login, isAdmin, bruger?.adminNavn ?? null)
+      );
     }
 
     if (action === "check") {

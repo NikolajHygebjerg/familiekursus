@@ -16,7 +16,9 @@ type AuthResult = {
 };
 
 function postLoginPath(data: AuthResult): string {
-  return data.isAdmin ? "/program" : "/workshop-tilmelding";
+  if (data.isAdmin) return "/program";
+  if (data.needsWorkshopRegistration) return "/workshop-tilmelding";
+  return "/tilmeldte";
 }
 
 function applyAuthAndRedirect(
@@ -73,7 +75,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isAuthReady || !email) return;
-    router.replace(!isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : "/program");
+    router.replace(
+      !isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : isAdmin ? "/program" : "/tilmeldte"
+    );
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 
   const loginSuggestions = Array.from(
