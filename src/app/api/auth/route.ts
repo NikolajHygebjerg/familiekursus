@@ -15,6 +15,10 @@ import {
   isAppSuperAdmin,
 } from "@/lib/super-admin";
 import { isEmailLike } from "@/lib/family-display";
+import {
+  issueForgotCodeChildChallenge,
+  verifyForgotCodeChildAnswer,
+} from "@/lib/forgot-code-challenge";
 import { getKursusYear } from "@/lib/kursus-year";
 import { getSupabaseConfigError, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
@@ -99,11 +103,27 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { action, email: rawLogin, brugernavn: rawBrugernavn, code } = body as {
-      action: "login" | "check" | "create" | "setCode" | "resetCode" | "status";
+    const {
+      action,
+      email: rawLogin,
+      brugernavn: rawBrugernavn,
+      code,
+      challengeToken,
+      barnNavn,
+    } = body as {
+      action:
+        | "login"
+        | "check"
+        | "create"
+        | "setCode"
+        | "resetCode"
+        | "forgotCodeChallenge"
+        | "status";
       email?: string;
       brugernavn?: string;
       code?: string;
+      challengeToken?: string;
+      barnNavn?: string;
     };
 
     const login = parseLogin(rawBrugernavn ?? rawLogin);
@@ -178,9 +198,39 @@ export async function POST(request: Request) {
       return NextResponse.json(await buildAuthResponse(login, false));
     }
 
+    if (action === "forgotCodeChallenge") {
+      const bruger = await getBrugerByLogin(login);
+      if (!bruger?.recordId) {
+        return NextResponse.json({ error: "Ingen bruger fundet med dette brugernavn" }, { status: 404 });
+      }
+      const challenge = await issueForgotCodeChildChallenge(login);
+      if ("error" in challenge) {
+        return NextResponse.json({ error: challenge.error }, { status: challenge.status });
+      }
+      return NextResponse.json({
+        ok: true,
+        alder: challenge.alder,
+        challengeToken: challenge.challengeToken,
+      });
+    }
+
     if (action === "resetCode") {
       if (!code || code.length < 4) {
         return NextResponse.json({ error: "Vælg en ny kode på mindst 4 tegn" }, { status: 400 });
+      }
+      const token = challengeToken?.trim();
+      const answer = barnNavn?.trim();
+      if (!token || !answer) {
+        return NextResponse.json(
+          { error: "Besvar sikkerhedsspørgsmålet om barnets fornavn før du vælger ny kode." },
+          { status: 400 }
+        );
+      }
+      if (!verifyForgotCodeChildAnswer(login, token, answer)) {
+        return NextResponse.json(
+          { error: "Forkert fornavn. Prøv igen, eller kontakt kursuslederen." },
+          { status: 403 }
+        );
       }
       const bruger = await getBrugerByLogin(login);
       if (!bruger?.recordId) {

@@ -18,6 +18,9 @@ export default function LogIndPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [challengeAlder, setChallengeAlder] = useState<number | null>(null);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [barnNavnSvar, setBarnNavnSvar] = useState("");
   useEffect(() => {
     clearLegacyLoginHistory();
   }, []);
@@ -80,10 +83,48 @@ export default function LogIndPage() {
     }
   }, [brugernavnInput, code, logout, applyAuthAndRedirect]);
 
+  const startGlemtKode = useCallback(async () => {
+    const login = brugernavnInput.trim();
+    if (!login) {
+      setError("Angiv brugernavn først");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setChallengeAlder(null);
+    setChallengeToken(null);
+    setBarnNavnSvar("");
+    setCode("");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "forgotCodeChallenge", brugernavn: login }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kunne ikke starte glemt kode");
+      setChallengeAlder(typeof data.alder === "number" ? data.alder : null);
+      setChallengeToken(typeof data.challengeToken === "string" ? data.challengeToken : null);
+      setStep("glemtKode");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke starte glemt kode");
+    } finally {
+      setLoading(false);
+    }
+  }, [brugernavnInput]);
+
   const handleGlemtKode = useCallback(async () => {
     const login = brugernavnInput.trim();
     if (!login || !code.trim() || code.length < 4) {
       setError("Vælg en ny kode på mindst 4 tegn");
+      return;
+    }
+    if (!challengeToken || challengeAlder == null) {
+      setError("Start forfra med «Glemt kode?»");
+      return;
+    }
+    if (!barnNavnSvar.trim()) {
+      setError("Skriv barnets fornavn");
       return;
     }
     setLoading(true);
@@ -96,6 +137,8 @@ export default function LogIndPage() {
           action: "resetCode",
           brugernavn: login,
           code: code.trim(),
+          challengeToken,
+          barnNavn: barnNavnSvar.trim(),
         }),
       });
       const data = await res.json();
@@ -106,7 +149,7 @@ export default function LogIndPage() {
     } finally {
       setLoading(false);
     }
-  }, [brugernavnInput, code, applyAuthAndRedirect]);
+  }, [brugernavnInput, code, challengeToken, challengeAlder, barnNavnSvar, applyAuthAndRedirect]);
 
   if (!isAuthReady || email) {
     return null;
@@ -158,12 +201,9 @@ export default function LogIndPage() {
             />
             <button
               type="button"
-              onClick={() => {
-                setStep("glemtKode");
-                setCode("");
-                setError(null);
-              }}
-              className="mb-4 text-sm text-amber-600 hover:text-amber-700 hover:underline"
+              onClick={() => void startGlemtKode()}
+              disabled={loading || !brugernavnInput.trim()}
+              className="mb-4 text-sm text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50"
             >
               Glemt kode?
             </button>
@@ -182,22 +222,39 @@ export default function LogIndPage() {
         {step === "glemtKode" && (
           <>
             <p className="mb-4 text-sm text-slate-600">
-              Vælg en ny kode (mindst 4 tegn). Den erstatter den gamle, hvis du havde en.
+              For at vælge en ny kode skal du først bekræfte, at det er jeres familie.
             </p>
             <input
               type="text"
               value={brugernavnInput}
               readOnly
-              className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
+              className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
             />
+            {challengeAlder != null && (
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Hvad hedder dit barn, som er {challengeAlder} år gammelt?
+              </label>
+            )}
             <input
+              type="text"
+              value={barnNavnSvar}
+              onChange={(e) => setBarnNavnSvar(e.target.value)}
+              placeholder="Barnets fornavn"
+              className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+              autoFocus
+              autoComplete="off"
+            />
+            <label htmlFor="ny-kode" className="mb-1 block text-sm font-medium text-slate-700">
+              Ny kode
+            </label>
+            <input
+              id="ny-kode"
               type="password"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void handleGlemtKode()}
               placeholder="Ny kode (min. 4 tegn)"
               className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-              autoFocus
             />
             <div className="flex gap-2">
               <button
@@ -205,6 +262,9 @@ export default function LogIndPage() {
                 onClick={() => {
                   setStep("login");
                   setCode("");
+                  setBarnNavnSvar("");
+                  setChallengeToken(null);
+                  setChallengeAlder(null);
                   setError(null);
                 }}
                 className="rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700 hover:bg-slate-50"
@@ -214,7 +274,13 @@ export default function LogIndPage() {
               <button
                 type="button"
                 onClick={() => void handleGlemtKode()}
-                disabled={loading || !code.trim() || code.length < 4}
+                disabled={
+                  loading ||
+                  !code.trim() ||
+                  code.length < 4 ||
+                  !barnNavnSvar.trim() ||
+                  !challengeToken
+                }
                 className="flex-1 rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
               >
                 {loading ? "Gemmer..." : "Gem ny kode og log ind"}
