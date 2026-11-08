@@ -19,7 +19,6 @@ export const WORKSHOP_KAPACITET: Record<
     "Fra jord til bord": { max: 40, unit: "person" },
     "Lego Byg Amok": { max: 20, unit: "person" },
     Kageworkshop: { max: 50, unit: "person" },
-    "Kageworkshop ": { max: 50, unit: "person" },
     Træværksted: { max: 30, unit: "person" },
   },
   workshop2: {
@@ -37,7 +36,6 @@ export const WORKSHOP_KAPACITET: Record<
     Rollespil: { max: 100, unit: "person" },
     Linoleum: { max: 25, unit: "person" },
     Maleri: { max: 35, unit: "person" },
-    "Maleri ": { max: 35, unit: "person" },
     "Vildt! (snak og æd)": { max: 40, unit: "person" },
     "Tur til Økolariet og skovlegepladsen": { max: 100, unit: "person" },
   },

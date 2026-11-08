@@ -887,12 +887,20 @@ export async function getWorkshopOptions(year: number): Promise<Record<string, s
     const woRecords = await fetchTableRecords(TABLE_WORKSHOPOVERSIGT);
     for (const key of Object.keys(WORKSHOPOVERSIGT_OPTION_FIELDS) as (keyof typeof WORKSHOPOVERSIGT_OPTION_FIELDS)[]) {
       const names = WORKSHOPOVERSIGT_OPTION_FIELDS[key];
-      const set = new Set<string>();
+      const byNorm = new Map<string, string>();
       for (const rec of woRecords) {
         const vals = getWorkshopValues(rec, names);
-        for (const v of vals) set.add(v);
+        for (const v of vals) {
+          const trimmed = v.trim();
+          if (!trimmed) continue;
+          const norm = normalizeWorkshopName(trimmed);
+          const prev = byNorm.get(norm);
+          if (!prev || trimmed.localeCompare(prev, "da") < 0) {
+            byNorm.set(norm, trimmed);
+          }
+        }
       }
-      result[key] = Array.from(set).sort();
+      result[key] = Array.from(byNorm.values()).sort((a, b) => a.localeCompare(b, "da"));
     }
   } catch {
     // Workshopoversigt kan mangle

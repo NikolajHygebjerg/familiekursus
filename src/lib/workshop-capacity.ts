@@ -83,6 +83,21 @@ export interface WorkshopCapacityConflict {
   memberNames: string[];
 }
 
+/** Én post per workshop (ignorerer tomme mellemrum og skrivemåder med samme normaliserede navn). */
+export function uniqueWorkshopDisplayNames(names: string[]): string[] {
+  const byNorm = new Map<string, string>();
+  for (const raw of names) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const norm = normalizeWorkshopName(trimmed);
+    const prev = byNorm.get(norm);
+    if (!prev || trimmed.localeCompare(prev, "da") < 0) {
+      byNorm.set(norm, trimmed);
+    }
+  }
+  return Array.from(byNorm.values());
+}
+
 function parseMaxWithUnit(raw: string | null): { max: number | null; unit: WorkshopCapacityUnit } {
   if (!raw?.trim()) return { max: null, unit: "person" };
   const lower = raw.toLowerCase();
@@ -221,7 +236,7 @@ export async function getWorkshopSlotOptionsDetailed(
 ): Promise<WorkshopOptionDetail[]> {
   const { getWorkshopOptions } = await import("@/lib/airtable");
   const options = await getWorkshopOptions(getKursusYear());
-  const names = options[slot] || [];
+  const names = uniqueWorkshopDisplayNames(options[slot] || []);
   const index = await buildWorkshopCapacityIndex();
   const detailed: WorkshopOptionDetail[] = [];
   for (const name of names) {
@@ -244,7 +259,7 @@ export async function getAllWorkshopOptionsDetailed(): Promise<
       slot !== "voksen" && slot in WORKSHOP_KAPACITET
         ? Object.keys(WORKSHOP_KAPACITET[slot as keyof typeof WORKSHOP_KAPACITET])
         : [];
-  const names = Array.from(new Set([...fromDb, ...fromFallback]));
+  const names = uniqueWorkshopDisplayNames([...fromDb, ...fromFallback]);
     const list: WorkshopOptionDetail[] = [];
     for (const name of names) {
       list.push(await getWorkshopOptionDetail(slot, name, index));
