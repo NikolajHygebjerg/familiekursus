@@ -1006,7 +1006,7 @@ export default function WorkshopTilmeldingPage() {
               <div className="space-y-6">
                 {adultsWithOpenSlots.length === 0 ? (
                   <p className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900">
-                    Alle voksne har valg på alle fire hold (ofte fordi de følger barnene). Bekræft nedenfor.
+                    Alle voksne har valg på alle fire hold. Bekræft nedenfor.
                   </p>
                 ) : (
                   adultsWithOpenSlots.map((adult) => (
