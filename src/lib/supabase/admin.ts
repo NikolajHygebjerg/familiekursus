@@ -61,16 +61,16 @@ export function createAdminClient() {
     auth: { persistSession: false, autoRefreshToken: false },
     realtime: { transport: ws as unknown as typeof WebSocket },
     global: {
-      fetch: (input, init) =>
-        fetch(input, {
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        headers.set("Pragma", "no-cache");
+        return fetch(input, {
           ...init,
           cache: "no-store",
-          headers: {
-            ...(init?.headers ?? {}),
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-          },
-        }),
+          headers,
+        });
+      },
     },
   });
 }
