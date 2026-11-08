@@ -51,6 +51,17 @@ type MemberWorkshops = {
   ledsager4?: string;
 };
 
+function payloadHasCompleteWorkshopChoices(members: MemberWorkshops[]): boolean {
+  if (members.length === 0) return false;
+  return members.every(
+    (m) =>
+      Boolean(m.workshop1?.trim()) &&
+      Boolean(m.workshop2?.trim()) &&
+      Boolean(m.workshop3?.trim()) &&
+      Boolean(m.workshop4?.trim())
+  );
+}
+
 function buildWorkshopDraftFromPayload(members: MemberWorkshops[]): WorkshopChoiceDraft {
   const draft: WorkshopChoiceDraft = {};
   for (const m of members) {
@@ -321,7 +332,9 @@ export async function POST(request: Request) {
       }
 
       const familyMemberCount = (await getFamilyMembersByLogin(login)).length;
-      const registrationComplete = await hasWorkshopRegistration(login, year);
+      const completeFromPayload = payloadHasCompleteWorkshopChoices(members);
+      const registrationComplete =
+        completeFromPayload || (await hasWorkshopRegistration(login, year));
       if (registrationComplete) {
         await markBrugerWorkshopsTilmeldt(login);
       }

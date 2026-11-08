@@ -149,10 +149,13 @@ export default function WorkshopTilmeldingPage() {
           setAuth(email, familyName ?? email, false, isAdmin, adminNavn);
         });
         if (showPostRegistrationWelcome) {
+          navigatingToWelcomeRef.current = true;
           markPostRegistrationWelcome();
           router.replace("/velkommen-til-app");
           return;
         }
+        router.replace("/tilmeldte");
+        return;
       } else if (syncAuth) {
         try {
           const res = await fetch("/api/auth", {
@@ -182,6 +185,8 @@ export default function WorkshopTilmeldingPage() {
   const goToAppRef = useRef(goToApp);
   goToAppRef.current = goToApp;
   const membersFetchGen = useRef(0);
+  /** Undgår at «færdig»-redirect på workshop-siden overskriver navigation til velkomst. */
+  const navigatingToWelcomeRef = useRef(false);
 
   const syncDraftFromMembers = useCallback((mems: FamilyMember[]) => {
     const next: WorkshopDraft = {};
@@ -281,9 +286,14 @@ export default function WorkshopTilmeldingPage() {
       return;
     }
     if (!needsWorkshopRegistration) {
-      router.replace(
-        peekPostRegistrationWelcome() ? "/velkommen-til-app" : "/tilmeldte"
-      );
+      if (navigatingToWelcomeRef.current || peekPostRegistrationWelcome()) {
+        if (!peekPostRegistrationWelcome()) {
+          markPostRegistrationWelcome();
+        }
+        router.replace("/velkommen-til-app");
+        return;
+      }
+      router.replace("/tilmeldte");
     }
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 
@@ -802,16 +812,18 @@ export default function WorkshopTilmeldingPage() {
         }
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
+        const updatedCount = typeof data.updatedCount === "number" ? data.updatedCount : 0;
+        const familyMemberCount =
+          typeof data.familyMemberCount === "number" ? data.familyMemberCount : members.length;
         const registrationComplete =
-          data.registrationComplete === true &&
-          typeof data.familyMemberCount === "number" &&
-          data.familyMemberCount > 0;
+          data.registrationComplete === true ||
+          (data.ok === true && updatedCount > 0 && familyMemberCount > 0);
         if (!registrationComplete) {
           const year =
             typeof data.kursusYear === "number" ? data.kursusYear : DEFAULT_KURSUS_YEAR;
           setError(
             `Workshops kunne ikke bekræftes i databasen (kursusår ${year}). ` +
-              (data.familyMemberCount === 0
+              (familyMemberCount === 0
                 ? "Ingen familiemedlemmer fundet for dit login — tjek at Vercel har samme Supabase-forbindelse som udvikling (se .env.example), og at KURSUS_YEAR=2027 er sat."
                 : "Tjek at alle i familien har valg på alle fire hold, og prøv igen.")
           );
@@ -820,7 +832,7 @@ export default function WorkshopTilmeldingPage() {
 
         await goToApp({
           registrationComplete: true,
-          syncAuth: true,
+          syncAuth: false,
           showPostRegistrationWelcome: true,
         });
       } catch (err) {
