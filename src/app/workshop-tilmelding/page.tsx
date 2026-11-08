@@ -741,9 +741,7 @@ export default function WorkshopTilmeldingPage() {
           <>
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Familie</h1>
             <p className="mb-6 text-sm text-slate-600">
-              Start med at tilføje <strong>børn</strong> og de <strong>voksne</strong>, der skal følge med.
-              Derefter vælger I workshops — først for børnene med ledsager, derefter for voksne på resterende
-              hold.
+              Indtast fornavn og alder på alle familiemedlemmer du vil vælge workshop for
             </p>
 
             {members.length > 0 && (
