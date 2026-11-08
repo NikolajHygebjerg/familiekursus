@@ -1063,6 +1063,8 @@ export default function WorkshopTilmeldingPage() {
   );
 }
 
+const EXTERNAL_FAMILY_ESCORT_VALUE = "__external_family_escort__";
+
 function ChildWorkshopCard({
   child,
   draft,
@@ -1086,6 +1088,10 @@ function ChildWorkshopCard({
   onExternalEscort: (slot: MainWorkshopSlot, name: string) => void;
   onSoloChange: (slot: MainWorkshopSlot, solo: boolean) => void;
 }) {
+  const [externalEscortActive, setExternalEscortActive] = useState<
+    Partial<Record<MainWorkshopSlot, boolean>>
+  >({});
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <h2 className="mb-3 font-semibold text-slate-800">
@@ -1114,7 +1120,14 @@ function ChildWorkshopCard({
               <label className="mb-2 block font-medium text-slate-700">{SLOT_LABELS[slot]}</label>
               <select
                 value={workshopName}
-                onChange={(e) => onWorkshopChange(slot, e.target.value)}
+                onChange={(e) => {
+                  setExternalEscortActive((prev) => {
+                    const next = { ...prev };
+                    delete next[slot];
+                    return next;
+                  });
+                  onWorkshopChange(slot, e.target.value);
+                }}
                 className="mb-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
               >
                 <option value="">— Vælg workshop —</option>
@@ -1144,44 +1157,52 @@ function ChildWorkshopCard({
                   )}
 
                   {!solo && (
-                    <>
-                      <label className="block text-slate-700">
-                        <span className="mb-1 block text-xs font-medium">
-                          Hvilken voksen følger med på {SLOT_LABELS[slot].toLowerCase()}?
-                        </span>
-                        <select
-                          value={familyEscort || ""}
-                          onChange={(e) => {
-                            const adultNavn = e.target.value;
-                            if (adultNavn) onFamilyEscort(slot, adultNavn, workshopName);
-                          }}
-                          disabled={adults.length === 0}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800 disabled:opacity-60"
-                        >
-                          <option value="">
-                            {adults.length === 0 ? "Ingen voksne i familien endnu" : "— Vælg voksen —"}
+                    <label className="block text-slate-700">
+                      <span className="mb-1 block text-xs font-medium">
+                        Hvilken voksen følger med på {SLOT_LABELS[slot].toLowerCase()}?
+                      </span>
+                      <select
+                        value={
+                          externalName || externalEscortActive[slot]
+                            ? EXTERNAL_FAMILY_ESCORT_VALUE
+                            : familyEscort || ""
+                        }
+                        onChange={(e) => {
+                          const choice = e.target.value;
+                          if (choice === EXTERNAL_FAMILY_ESCORT_VALUE) {
+                            setExternalEscortActive((prev) => ({ ...prev, [slot]: true }));
+                            if (!externalName) onExternalEscort(slot, "");
+                          } else if (choice) {
+                            setExternalEscortActive((prev) => ({ ...prev, [slot]: false }));
+                            onFamilyEscort(slot, choice, workshopName);
+                          } else {
+                            setExternalEscortActive((prev) => ({ ...prev, [slot]: false }));
+                            onExternalEscort(slot, "");
+                          }
+                        }}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
+                      >
+                        <option value="">— Vælg voksen —</option>
+                        {adults.map((a) => (
+                          <option key={a.navn} value={a.navn}>
+                            {a.navn}
+                            {a.alder != null ? ` (${a.alder} år)` : ""}
                           </option>
-                          {adults.map((a) => (
-                            <option key={a.navn} value={a.navn}>
-                              {a.navn}
-                              {a.alder != null ? ` (${a.alder} år)` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block text-slate-700">
-                        <span className="mb-1 block text-xs font-medium">
-                          Eller voksen fra anden familie (fornavn)
-                        </span>
+                        ))}
+                        <option value={EXTERNAL_FAMILY_ESCORT_VALUE}>
+                          Vælg en voksen fra en anden familie (fornavn)
+                        </option>
+                      </select>
+                      {(externalName || externalEscortActive[slot]) && (
                         <input
                           type="text"
                           value={externalName}
                           onChange={(e) => onExternalEscort(slot, e.target.value)}
-                          placeholder="Fx Morten"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
+                          placeholder="Fornavn på voksen, fx Morten"
+                          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
                         />
-                      </label>
-                    </>
+                      )}
+                    </label>
                   )}
                 </div>
               )}
