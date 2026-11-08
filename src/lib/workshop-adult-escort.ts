@@ -189,6 +189,21 @@ export function mergeRosterWithClientMembers<T extends RosterMember>(
   });
 }
 
+/** Voksne der enten er frie på slot, eller allerede tilmeldt præcis denne workshop. */
+export function filterAdultsAvailableForEscortSlot(
+  adults: RosterMember[],
+  workshopDraft: WorkshopChoiceDraft,
+  slot: EscortWorkshopSlot,
+  workshopDisplayName: string
+): RosterMember[] {
+  const target = normalizeWorkshopName(workshopDisplayName);
+  return adults.filter((adult) => {
+    const choice = workshopDraft[adult.navn]?.[slot]?.trim();
+    if (!choice) return true;
+    return normalizeWorkshopName(choice) === target;
+  });
+}
+
 export function findFamilyAdultOnChildSlot(
   adults: RosterMember[],
   workshopDraft: WorkshopChoiceDraft,

@@ -13,6 +13,7 @@ import {
   childAllowsExternalFamilyEscort,
   childCanAttendWorkshopWithoutAdult,
   childMustConfirmEscortPerSlot,
+  filterAdultsAvailableForEscortSlot,
   findFamilyAdultOnChildSlot,
   getWorkshopAgeRule,
   isWorkshopBlockedForMember,
@@ -1090,7 +1091,14 @@ export default function WorkshopTilmeldingPage() {
             gap={escortQueue[0]}
             queueSize={escortQueue.length}
             child={members.find((m) => m.navn === escortQueue[0].childNavn) ?? null}
-            adults={adultsInFamily}
+            adults={
+              filterAdultsAvailableForEscortSlot(
+                adultsInFamily,
+                draft,
+                escortQueue[0].slot,
+                escortQueue[0].workshopName
+              ) as FamilyMember[]
+            }
             onAssignFamily={(adultNavn) => assignFamilyAdultToGap(escortQueue[0], adultNavn)}
             onAssignExternal={(voksenNavn) => assignExternalAdultToGap(escortQueue[0], voksenNavn)}
             onAssignSolo={() => assignSoloToGap(escortQueue[0])}
@@ -1154,6 +1162,10 @@ function ChildWorkshopCard({
             workshopName && !externalName
               ? findFamilyAdultOnChildSlot(adults, draft, slot, workshopName)
               : null;
+          const escortAdults =
+            workshopName.length > 0
+              ? filterAdultsAvailableForEscortSlot(adults, draft, slot, workshopName)
+              : adults;
 
           return (
             <div
@@ -1226,7 +1238,7 @@ function ChildWorkshopCard({
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
                       >
                         <option value="">— Vælg voksen —</option>
-                        {adults.map((a) => (
+                        {escortAdults.map((a) => (
                           <option key={a.navn} value={a.navn}>
                             {a.navn}
                             {a.alder != null ? ` (${a.alder} år)` : ""}
