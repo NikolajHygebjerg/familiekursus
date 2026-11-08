@@ -979,7 +979,7 @@ export default function WorkshopTilmeldingPage() {
           <>
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Voksnes workshops</h1>
             <p className="mb-4 text-sm text-slate-600">
-              Vælg workshop i de hold, hvor voksenen ikke allerede er tilmeldt for at følge et barn. Hold
+              Vælg workshop i de hold, hvor den voksen ikke allerede er tilmeldt for at følge et barn. Hold
               udfyldt via ledsager er markeret som fastlagt.
             </p>
 
