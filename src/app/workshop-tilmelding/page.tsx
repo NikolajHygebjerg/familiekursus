@@ -718,7 +718,9 @@ export default function WorkshopTilmeldingPage() {
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
         const registrationComplete =
-          data.registrationComplete === true || data.saved === true;
+          data.registrationComplete === true &&
+          typeof data.familyMemberCount === "number" &&
+          data.familyMemberCount > 0;
         if (!registrationComplete) {
           const year =
             typeof data.kursusYear === "number" ? data.kursusYear : DEFAULT_KURSUS_YEAR;

@@ -284,8 +284,8 @@ export async function POST(request: Request) {
         );
       }
 
-      const registrationComplete = await hasWorkshopRegistration(login, year);
       const familyMemberCount = (await getFamilyMembersByLogin(login)).length;
+      const registrationComplete = await hasWorkshopRegistration(login, year);
 
       return NextResponse.json({
         ok: true,

@@ -60,7 +60,7 @@ const WORKSHOP_LABELS: Record<string, string> = {
 
 export default function TilmeldtePage() {
   const { selectedFamily, isKursusleder } = useFamily();
-  const { email, adminNavn } = useAuth();
+  const { email, familyName, adminNavn, setAuth } = useAuth();
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +71,32 @@ export default function TilmeldtePage() {
   const [bornegruppeOverview, setBornegruppeOverview] = useState<BornegruppeOverviewBlock[]>([]);
 
   const displayFamily = selectedFamily;
-  /** Brugernavn til API — ikke familienavn (fx «Hygge»). */
-  const familyLogin = !isKursusleder && email ? email : null;
+  /** Brugernavn / familie til API (fx login «Hygge»). */
+  const familyLogin =
+    !isKursusleder && (email?.trim() || familyName?.trim())
+      ? (email?.trim() || familyName?.trim() || null)
+      : null;
+
+  useEffect(() => {
+    if (!familyLogin) return;
+    void fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status", brugernavn: familyLogin }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.email) return;
+        setAuth(
+          data.email,
+          data.familyName ?? familyName ?? data.email,
+          Boolean(data.needsWorkshopRegistration),
+          Boolean(data.isAdmin),
+          data.adminNavn ?? null
+        );
+      })
+      .catch(() => undefined);
+  }, [familyLogin, familyName, setAuth]);
 
   useEffect(() => {
     if (isKursusleder) {
@@ -101,16 +125,32 @@ export default function TilmeldtePage() {
     }
     setLoadingMembers(true);
     setError(null);
-    const url = `/api/families/email?email=${encodeURIComponent(familyLogin)}`;
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.statusText);
-        return res.json();
-      })
-      .then(setMembers)
-      .catch((err) => setError(err.message))
+    const logins = Array.from(
+      new Set([email?.trim(), familyName?.trim(), familyLogin].filter(Boolean))
+    ) as string[];
+
+    const load = async () => {
+      for (const login of logins) {
+        const res = await fetch(`/api/families/email?email=${encodeURIComponent(login)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(typeof body?.error === "string" ? body.error : res.statusText);
+        }
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setMembers(data);
+          return;
+        }
+      }
+      setMembers([]);
+    };
+
+    void load()
+      .catch((err) => setError(err instanceof Error ? err.message : "Fejl"))
       .finally(() => setLoadingMembers(false));
-  }, [familyLogin]);
+  }, [familyLogin, email, familyName]);
 
   useEffect(() => {
     if (!familyLogin) {

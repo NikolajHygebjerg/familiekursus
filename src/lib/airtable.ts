@@ -1334,6 +1334,10 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
   const byLogin = await getFamilyMembersByLogin(login);
   if (byLogin.length > 0) return byLogin;
 
+  // Login bruges ofte som familienavn (fx «Hygge») — hent også via Familie-feltet.
+  const byFamilieNavn = await getFamilyMembers(login);
+  if (byFamilieNavn.length > 0) return byFamilieNavn;
+
   const familyLabel = await getFamilyByLogin(login);
   if (
     familyLabel &&
@@ -1343,7 +1347,7 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
     if (byFamily.length > 0) return byFamily;
   }
 
-  return byLogin;
+  return [];
 }
 
 function mergeFamilyMemberRow(a: FamilyMember, b: FamilyMember): FamilyMember {
