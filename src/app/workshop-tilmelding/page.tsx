@@ -103,6 +103,10 @@ export default function WorkshopTilmeldingPage() {
   const [conflicts, setConflicts] = useState<CapacityConflict[] | null>(null);
   const [escortQueue, setEscortQueue] = useState<AdultEscortGap[]>([]);
   const [externalEscorts, setExternalEscorts] = useState<ExternalEscortDraft>({});
+  const draftRef = useRef<WorkshopDraft>({});
+  const externalEscortsRef = useRef<ExternalEscortDraft>({});
+  draftRef.current = draft;
+  externalEscortsRef.current = externalEscorts;
 
   const goToApp = useCallback(
     async (syncAuth: boolean) => {
@@ -373,6 +377,56 @@ export default function WorkshopTilmeldingPage() {
     [members]
   );
 
+  const rosterForEscort = useMemo(
+    () => mergeRosterWithClientMembers(members, members),
+    [members]
+  );
+
+  const escortGapsMatch = useCallback((a: AdultEscortGap[], b: AdultEscortGap[]) => {
+    if (a.length !== b.length) return false;
+    return a.every(
+      (g, i) =>
+        g.childNavn === b[i]?.childNavn &&
+        g.slot === b[i]?.slot &&
+        g.workshopName === b[i]?.workshopName
+    );
+  }, []);
+
+  useEffect(() => {
+    setEscortQueue((prev) => {
+      if (prev.length === 0) return prev;
+      const gaps = listAdultEscortGaps(rosterForEscort, draft, externalEscorts);
+      return escortGapsMatch(prev, gaps) ? prev : gaps;
+    });
+  }, [draft, externalEscorts, rosterForEscort, escortGapsMatch]);
+
+  const setMemberWorkshopChoice = useCallback(
+    (memberNavn: string, slot: MainWorkshopSlot, value: string) => {
+      setDraft((prev) => ({
+        ...prev,
+        [memberNavn]: {
+          ...(prev[memberNavn] || {
+            workshop1: "",
+            workshop2: "",
+            workshop3: "",
+            workshop4: "",
+          }),
+          [slot]: value,
+        },
+      }));
+      setExternalEscorts((prev) => {
+        const child = prev[memberNavn];
+        if (!child?.[slot]) return prev;
+        const { [slot]: _removed, ...rest } = child;
+        const next = { ...prev };
+        if (Object.keys(rest).length === 0) delete next[memberNavn];
+        else next[memberNavn] = rest;
+        return next;
+      });
+    },
+    []
+  );
+
   const assignFamilyAdultToGap = useCallback(
     (gap: AdultEscortGap, adultNavn: string) => {
       setDraft((prev) => {
@@ -388,7 +442,7 @@ export default function WorkshopTilmeldingPage() {
             [gap.slot]: gap.workshopName,
           },
         };
-        const gaps = listAdultEscortGaps(members, next, externalEscorts);
+        const gaps = listAdultEscortGaps(rosterForEscort, next, externalEscortsRef.current);
         setEscortQueue(gaps);
         return next;
       });
@@ -402,7 +456,7 @@ export default function WorkshopTilmeldingPage() {
         return next;
       });
     },
-    [members, externalEscorts]
+    [rosterForEscort, externalEscorts]
   );
 
   const assignExternalAdultToGap = useCallback(
@@ -414,19 +468,20 @@ export default function WorkshopTilmeldingPage() {
           ...prev,
           [gap.childNavn]: { ...(prev[gap.childNavn] || {}), [gap.slot]: name },
         };
-        const gaps = listAdultEscortGaps(members, draft, next);
+        const gaps = listAdultEscortGaps(rosterForEscort, draftRef.current, next);
         setEscortQueue(gaps);
         return next;
       });
     },
-    [members, draft]
+    [rosterForEscort]
   );
 
   const submitWorkshops = useCallback(
     async (acceptPartial = false, partialChoices?: Record<string, string[]>) => {
       if (!email) return;
+      const liveDraft = draftRef.current;
       const incomplete = members.some((m) => {
-        const d = draft[m.navn];
+        const d = liveDraft[m.navn];
         return !d?.workshop1 || !d?.workshop2 || !d?.workshop3 || !d?.workshop4;
       });
       if (incomplete) {
@@ -434,7 +489,10 @@ export default function WorkshopTilmeldingPage() {
         return;
       }
 
-      const minViolations = listWorkshopMinAgeViolations(members, draft);
+      const currentDraft = draftRef.current;
+      const currentEscorts = externalEscortsRef.current;
+
+      const minViolations = listWorkshopMinAgeViolations(members, currentDraft);
       if (minViolations.length > 0) {
         const v = minViolations[0];
         setError(
@@ -443,8 +501,7 @@ export default function WorkshopTilmeldingPage() {
         return;
       }
 
-      const rosterForEscort = mergeRosterWithClientMembers(members, members);
-      const escortGaps = listAdultEscortGaps(rosterForEscort, draft, externalEscorts);
+      const escortGaps = listAdultEscortGaps(rosterForEscort, currentDraft, currentEscorts);
       if (escortGaps.length > 0) {
         setEscortQueue(escortGaps);
         return;
@@ -500,7 +557,7 @@ export default function WorkshopTilmeldingPage() {
         setSubmitting(false);
       }
     },
-    [email, members, draft, externalEscorts, membersPayload, goToApp, fetchOptions]
+    [email, members, rosterForEscort, membersPayload, goToApp, fetchOptions]
   );
 
   const acceptPartialForConflict = useCallback(
@@ -623,21 +680,9 @@ export default function WorkshopTilmeldingPage() {
                           </span>
                           <select
                             value={draft[member.navn]?.[slot] || ""}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setDraft((prev) => ({
-                                ...prev,
-                                [member.navn]: {
-                                  ...(prev[member.navn] || {
-                                    workshop1: "",
-                                    workshop2: "",
-                                    workshop3: "",
-                                    workshop4: "",
-                                  }),
-                                  [slot]: value,
-                                },
-                              }));
-                            }}
+                            onChange={(e) =>
+                              setMemberWorkshopChoice(member.navn, slot, e.target.value)
+                            }
                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800"
                           >
                             <option value="">— Vælg —</option>
@@ -697,6 +742,7 @@ export default function WorkshopTilmeldingPage() {
 
         {escortQueue.length > 0 && (
           <AdultEscortDialog
+            key={`${escortQueue[0].childNavn}:${escortQueue[0].slot}:${escortQueue[0].workshopName}`}
             gap={escortQueue[0]}
             queueSize={escortQueue.length}
             adults={adultsInFamily}
