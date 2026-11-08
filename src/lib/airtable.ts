@@ -32,7 +32,7 @@ const ALDERSGRUPPER_TABLE_NAMES = [
 
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
 const BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login", "Username", "username"];
-const BRUGERE_BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login", ...EMAIL_FIELDS];
+const BRUGERE_BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login"];
 
 // Feltnavne for workshop-kolonner i 2026-tabellen (Deltagerliste)
 export const WORKSHOP_FIELDS: Record<string, string[]> = {
@@ -660,9 +660,7 @@ export function normalizeLoginName(login: string): string {
 
 function getParticipantLoginFromRecord(record: AirtableRecord): string | null {
   return (
-    getFieldValue(record, BRUGERNAVN_FIELDS) ||
-    getEmailFromRecord(record) ||
-    getFieldValue(record, FAMILIE_FIELDS)
+    getFieldValue(record, BRUGERNAVN_FIELDS) || getFieldValue(record, FAMILIE_FIELDS)
   );
 }
 
@@ -670,7 +668,6 @@ function loginMatchesRecord(record: AirtableRecord, login: string): boolean {
   const target = normalizeLoginName(login).toLowerCase();
   const candidates = [
     getFieldValue(record, BRUGERNAVN_FIELDS),
-    getEmailFromRecord(record),
     getFieldValue(record, FAMILIE_FIELDS),
   ];
   return candidates.some((c) => c && normalizeLoginName(c).toLowerCase() === target);
@@ -849,7 +846,6 @@ export async function upsertAppSuperAdminBruger(login: string, code: string): Pr
 
   const existing = await getBrugerByLogin(normalized);
   const fields: Record<string, unknown> = {
-    Email: normalized,
     Brugernavn: normalized,
     Brugerstatus: "Admin",
     Kode: kode,
@@ -874,9 +870,7 @@ export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null
     const records = await fetchTableRecords(TABLE_BRUGERE);
     let fallback: BrugerInfo | null = null;
     for (const record of records) {
-      const brugerLogin =
-        getFieldValue(record, BRUGERE_BRUGERNAVN_FIELDS) ||
-        getEmailFromRecord(record);
+      const brugerLogin = getFieldValue(record, BRUGERE_BRUGERNAVN_FIELDS);
       if (brugerLogin?.toLowerCase() !== target) continue;
       const code = getFieldValue(record, KODE_FIELDS)?.trim() || null;
       const status = getFieldValue(record, BRUGERSTATUS_FIELDS);
@@ -979,8 +973,7 @@ export async function deleteFamilyByLogin(login: string): Promise<{
   try {
     const brugere = await fetchTableRecords(TABLE_BRUGERE);
     for (const record of brugere) {
-      const brugerLogin =
-        getFieldValue(record, BRUGERE_BRUGERNAVN_FIELDS) || getEmailFromRecord(record);
+      const brugerLogin = getFieldValue(record, BRUGERE_BRUGERNAVN_FIELDS);
       if (!brugerLogin || normalizeLoginName(brugerLogin).toLowerCase() !== normalized.toLowerCase()) {
         continue;
       }

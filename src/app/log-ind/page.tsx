@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import AuthBranding from "@/components/AuthBranding";
 import { AuthResult, clearLegacyLoginHistory, postLoginPath } from "@/lib/auth-client";
+import { rejectAtInBrugernavn } from "@/lib/brugernavn";
 
 type Step = "login" | "glemtKode";
 
@@ -48,7 +49,11 @@ export default function LogIndPage() {
 
   const handleLogin = useCallback(async () => {
     const login = brugernavnInput.trim();
-    if (!login) return;
+    const brugernavnError = rejectAtInBrugernavn(login);
+    if (brugernavnError) {
+      setError(brugernavnError);
+      return;
+    }
     setLoading(true);
     setError(null);
     setSuccessMessage(null);
@@ -85,8 +90,9 @@ export default function LogIndPage() {
 
   const startGlemtKode = useCallback(async () => {
     const login = brugernavnInput.trim();
-    if (!login) {
-      setError("Angiv brugernavn først");
+    const brugernavnError = rejectAtInBrugernavn(login);
+    if (brugernavnError) {
+      setError(brugernavnError);
       return;
     }
     setLoading(true);
@@ -169,6 +175,9 @@ export default function LogIndPage() {
             <label htmlFor="brugernavn" className="mb-1 block text-sm font-medium text-slate-700">
               Brugernavn
             </label>
+            <p className="mb-2 text-sm text-slate-500">
+              Brug et navn uden @ — vi bruger ikke e-mail som login (GDPR).
+            </p>
             <input
               id="brugernavn"
               type="text"

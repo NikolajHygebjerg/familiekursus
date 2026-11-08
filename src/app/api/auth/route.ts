@@ -20,23 +20,18 @@ import {
   verifyForgotCodeChildAnswer,
 } from "@/lib/forgot-code-challenge";
 import { getKursusYear } from "@/lib/kursus-year";
+import { validateBrugernavn } from "@/lib/brugernavn";
 import { getSupabaseConfigError, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 const TABLE_BRUGERE = "Brugere";
 const BRUGERE_LOGIN_FIELDS = {
-  email: "Email",
   brugernavn: "Brugernavn",
   kode: "Kode",
   status: "Brugerstatus",
 };
 
 export const dynamic = "force-dynamic";
-
-function parseLogin(raw: string | undefined): string | null {
-  const login = normalizeLoginName(raw ?? "");
-  return login.length > 0 ? login : null;
-}
 
 async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: string | null = null) {
   const effectiveAdmin = isAdmin || isAppSuperAdmin(login);
@@ -71,7 +66,6 @@ async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: str
 
 function brugerCreateFields(login: string, code?: string): Record<string, unknown> {
   const fields: Record<string, unknown> = {
-    [BRUGERE_LOGIN_FIELDS.email]: login,
     [BRUGERE_LOGIN_FIELDS.brugernavn]: login,
     [BRUGERE_LOGIN_FIELDS.status]: "Bruger",
   };
@@ -126,10 +120,11 @@ export async function POST(request: Request) {
       barnNavn?: string;
     };
 
-    const login = parseLogin(rawBrugernavn ?? rawLogin);
-    if (!login) {
-      return NextResponse.json({ error: "Brugernavn mangler" }, { status: 400 });
+    const parsedLogin = validateBrugernavn(rawBrugernavn ?? rawLogin);
+    if (!parsedLogin.ok) {
+      return NextResponse.json({ error: parsedLogin.error }, { status: 400 });
     }
+    const login = parsedLogin.login;
 
     if (action === "status") {
       const bruger = await getBrugerByLogin(login);

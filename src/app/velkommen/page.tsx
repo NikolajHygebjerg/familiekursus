@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import AuthBranding from "@/components/AuthBranding";
 import { AuthResult, clearLegacyLoginHistory, postLoginPath } from "@/lib/auth-client";
+import { rejectAtInBrugernavn } from "@/lib/brugernavn";
 
 export default function VelkommenPage() {
   const router = useRouter();
@@ -29,8 +30,9 @@ export default function VelkommenPage() {
   const handleOpret = useCallback(async () => {
     const login = brugernavnInput.trim();
     const kode = code.trim();
-    if (!login) {
-      setError("Angiv et brugernavn");
+    const brugernavnError = rejectAtInBrugernavn(login);
+    if (brugernavnError) {
+      setError(brugernavnError);
       return;
     }
     if (kode.length < 4) {
@@ -83,7 +85,8 @@ export default function VelkommenPage() {
           Brugernavn
         </label>
         <p className="mb-3 text-sm text-slate-500">
-          Skriv det brugernavn I brugte ved tilmelding til familiekursus.
+          Skriv det brugernavn I brugte ved tilmelding til familiekursus. Det må ikke være en
+          e-mailadresse (ingen @) — vi gemmer ikke e-mail som login af hensyn til GDPR.
         </p>
         <input
           id="brugernavn"
