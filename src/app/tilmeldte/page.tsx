@@ -202,48 +202,58 @@ export default function TilmeldtePage() {
       });
   }, [familieloebInfo]);
 
-  const workshopOverview = useMemo(() => {
-    const result: { slot: string; workshopName: string; participants: string[] }[] = [];
-    for (const slot of ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const) {
+  const workshopSlotsOverview = useMemo(() => {
+    const slots = ["workshop1", "workshop2", "workshop3", "workshop4", "voksen"] as const;
+    const result: {
+      slotKey: (typeof slots)[number];
+      slotLabel: string;
+      workshops: { workshopName: string; participants: string[] }[];
+    }[] = [];
+
+    for (const slot of slots) {
       const grouped = new Map<string, string[]>();
       for (const member of members) {
         const workshopName = member[slot];
         if (workshopName) {
           const list = grouped.get(workshopName) || [];
           const label =
-            slot === "voksen"
-              ? member.navn
-              : participantDisplayName(member, slot);
+            slot === "voksen" ? member.navn : participantDisplayName(member, slot);
           list.push(label);
           grouped.set(workshopName, list);
         }
       }
-      Array.from(grouped.entries()).forEach(([workshopName, participants]) => {
-        result.push({
-          slot: WORKSHOP_LABELS[slot],
+      const workshops = Array.from(grouped.entries())
+        .map(([workshopName, participants]) => ({
           workshopName,
-          participants,
+          participants: [...participants].sort((a, b) => a.localeCompare(b, "da")),
+        }))
+        .sort((a, b) => a.workshopName.localeCompare(b.workshopName, "da"));
+      if (workshops.length > 0) {
+        result.push({
+          slotKey: slot,
+          slotLabel: WORKSHOP_LABELS[slot],
+          workshops,
         });
-      });
-    }
-
-    const aftengruppeGrouped = new Map<string, string[]>();
-    for (const member of members) {
-      if (member.aftengrupper) {
-        const list = aftengruppeGrouped.get(member.aftengrupper) || [];
-        list.push(member.navn);
-        aftengruppeGrouped.set(member.aftengrupper, list);
       }
     }
-    Array.from(aftengruppeGrouped.entries()).forEach(([gruppeName, participants]) => {
-      result.push({
-        slot: "Aftengruppe",
-        workshopName: gruppeName,
-        participants,
-      });
-    });
+    return result;
+  }, [members]);
 
-    return result.sort((a, b) => a.slot.localeCompare(b.slot) || a.workshopName.localeCompare(b.workshopName));
+  const aftengruppeSlotsOverview = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const member of members) {
+      if (member.aftengrupper) {
+        const list = grouped.get(member.aftengrupper) || [];
+        list.push(member.navn);
+        grouped.set(member.aftengrupper, list);
+      }
+    }
+    return Array.from(grouped.entries())
+      .map(([gruppeName, participants]) => ({
+        workshopName: gruppeName,
+        participants: [...participants].sort((a, b) => a.localeCompare(b, "da")),
+      }))
+      .sort((a, b) => a.workshopName.localeCompare(b.workshopName, "da"));
   }, [members]);
 
   const myWorkshopsBySlot = useMemo(() => {
@@ -446,26 +456,53 @@ export default function TilmeldtePage() {
                 Workshops – hvem er på hvad
               </h2>
               <div className="space-y-4">
-                {workshopOverview.length === 0 && bornegruppeOverview.length === 0 ? (
+                {workshopSlotsOverview.length === 0 &&
+                aftengruppeSlotsOverview.length === 0 &&
+                bornegruppeOverview.length === 0 ? (
                   <p className="text-slate-500">Ingen workshops tilmeldt.</p>
                 ) : (
                   <>
-                    {workshopOverview.map(({ slot, workshopName, participants }) => (
+                    {workshopSlotsOverview.map(({ slotKey, slotLabel, workshops }) => (
                       <div
-                        key={`${slot}-${workshopName}`}
+                        key={slotKey}
                         className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
                       >
-                        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                          {slot}
-                        </p>
-                        <h3 className="mb-2 font-semibold text-slate-800">{workshopName}</h3>
-                        <ul className="space-y-1 text-sm text-slate-600">
-                          {participants.map((p) => (
-                            <li key={p}>• {p}</li>
+                        <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+                          {slotLabel}
+                        </h3>
+                        <div className="space-y-4">
+                          {workshops.map(({ workshopName, participants }) => (
+                            <div key={workshopName}>
+                              <h4 className="mb-2 font-semibold text-slate-800">{workshopName}</h4>
+                              <ul className="space-y-1 text-sm text-slate-600">
+                                {participants.map((p) => (
+                                  <li key={p}>• {p}</li>
+                                ))}
+                              </ul>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     ))}
+                    {aftengruppeSlotsOverview.length > 0 && (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
+                        <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+                          Aftengruppe
+                        </h3>
+                        <div className="space-y-4">
+                          {aftengruppeSlotsOverview.map(({ workshopName, participants }) => (
+                            <div key={workshopName}>
+                              <h4 className="mb-2 font-semibold text-slate-800">{workshopName}</h4>
+                              <ul className="space-y-1 text-sm text-slate-600">
+                                {participants.map((p) => (
+                                  <li key={p}>• {p}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {bornegruppeOverview.length > 0 && (
                       <div className="space-y-4">
                         <h3 className="text-base font-semibold text-slate-800">
