@@ -1,9 +1,10 @@
 import {
   createAirtableRecord,
-  getParticipantRecordId,
+  deleteAirtableRecord,
   getParticipantRecordIdsByLogin,
   getYearTableId,
   hasWorkshopRegistration,
+  listParticipantRecordIdsForName,
   normalizeLoginName,
   updateAirtableRecord,
   WORKSHOP_FIELDS,
@@ -184,13 +185,25 @@ export async function POST(request: Request) {
 
     const type = alderNum >= 18 ? "Voksen" : "Barn";
 
-    const existingId = await getParticipantRecordId(login, fornavn);
-    if (existingId) {
-      await updateAirtableRecord(tableId, existingId, {
+    const existingIds = await listParticipantRecordIdsForName(login, fornavn);
+    if (existingIds.length > 0) {
+      const primaryId = existingIds[0];
+      await updateAirtableRecord(tableId, primaryId, {
+        [NAVN_FIELDS[0]]: fornavn,
         [ALDER_FIELDS[0]]: alderNum,
         [BARN_VOKSEN_FIELDS[0]]: type,
+        [BRUGERNAVN_FIELDS[0]]: login,
+        [EMAIL_FIELDS[0]]: login,
+        [FAMILIE_FIELDS[0]]: login,
       });
-      return NextResponse.json({ ok: true, updated: true });
+      for (let i = 1; i < existingIds.length; i++) {
+        await deleteAirtableRecord(tableId, existingIds[i]);
+      }
+      return NextResponse.json({
+        ok: true,
+        updated: true,
+        message: `${fornavn} findes allerede — alder er opdateret.`,
+      });
     }
 
     const fields: Record<string, string | number> = {

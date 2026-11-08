@@ -77,6 +77,7 @@ export default function WorkshopTilmeldingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<CapacityConflict[] | null>(null);
+  const [showAddMemberForm, setShowAddMemberForm] = useState(true);
 
   const goToApp = useCallback(
     (syncAuth: boolean) => {
@@ -119,7 +120,7 @@ export default function WorkshopTilmeldingPage() {
         goToAppRef.current(true);
         return;
       }
-      if (hasRoster && workshopsStarted) setStep("workshops");
+      if (hasRoster) setStep("workshops");
     },
     [syncDraftFromMembers]
   );
@@ -186,9 +187,15 @@ export default function WorkshopTilmeldingPage() {
     if (step !== "workshops" || loading) return;
     if (members.length === 0) {
       setStep("family");
+      setShowAddMemberForm(true);
       setError((prev) => prev ?? "Tilføj familiemedlemmer under Familie, før I vælger workshops.");
     }
   }, [step, loading, members.length]);
+
+  useEffect(() => {
+    if (members.length > 0) setShowAddMemberForm(false);
+    else setShowAddMemberForm(true);
+  }, [members.length]);
 
   const resetFamilyForm = useCallback(() => {
     setFornavn("");
@@ -329,9 +336,13 @@ export default function WorkshopTilmeldingPage() {
             </p>
 
             {members.length > 0 && (
-              <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="mb-3 text-sm font-semibold text-slate-700">Tilføjet</h2>
-                <ul className="divide-y divide-slate-100 text-sm text-slate-800">
+              <section className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
+                <h2 className="mb-1 text-sm font-semibold text-emerald-900">Jeres familie er gemt</h2>
+                <p className="mb-3 text-sm text-emerald-800">
+                  Navn og alder huskes — I behøver ikke indtaste dem igen. Samme fornavn opdateres i
+                  stedet for at lave en dublet.
+                </p>
+                <ul className="divide-y divide-emerald-100 text-sm text-slate-800">
                   {members.map((m) => (
                     <li key={m.navn} className="flex justify-between py-2">
                       <span>{m.navn}</span>
@@ -347,39 +358,74 @@ export default function WorkshopTilmeldingPage() {
             {loading ? (
               <p className="text-slate-500">Henter...</p>
             ) : (
-              <form
-                onSubmit={(e) => e.preventDefault()}
-                className="space-y-4 rounded-xl bg-white p-6 shadow-lg"
-              >
-                <FamilyMemberFields
-                  fornavn={fornavn}
-                  alder={alder}
-                  setFornavn={setFornavn}
-                  setAlder={setAlder}
-                />
-                {error && <ErrorBox message={error} />}
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => void submitFamily(false)}
-                    disabled={submitting || !fornavn.trim() || !alder.trim()}
-                    className="flex-1 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              <>
+                {members.length > 0 && !showAddMemberForm && (
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void submitFamily(true)}
+                      disabled={submitting}
+                      className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      Fortsæt til workshopvalg
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddMemberForm(true)}
+                      className="text-sm text-amber-700 hover:underline"
+                    >
+                      Tilføj endnu en person
+                    </button>
+                  </div>
+                )}
+                {showAddMemberForm && (
+                  <form
+                    onSubmit={(e) => e.preventDefault()}
+                    className="space-y-4 rounded-xl bg-white p-6 shadow-lg"
                   >
-                    Gem og tilføj næste
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void submitFamily(true)}
-                    disabled={
-                      submitting ||
-                      (members.length === 0 && (!fornavn.trim() || !alder.trim()))
-                    }
-                    className="flex-1 rounded-lg bg-amber-500 px-4 py-3 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-                  >
-                    Fortsæt til workshopvalg
-                  </button>
-                </div>
-              </form>
+                    <FamilyMemberFields
+                      fornavn={fornavn}
+                      alder={alder}
+                      setFornavn={setFornavn}
+                      setAlder={setAlder}
+                    />
+                    {error && <ErrorBox message={error} />}
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => void submitFamily(false)}
+                        disabled={submitting || !fornavn.trim() || !alder.trim()}
+                        className="flex-1 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        Gem og tilføj næste
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void submitFamily(true)}
+                        disabled={
+                          submitting ||
+                          (members.length === 0 && (!fornavn.trim() || !alder.trim()))
+                        }
+                        className="flex-1 rounded-lg bg-amber-500 px-4 py-3 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        Fortsæt til workshopvalg
+                      </button>
+                    </div>
+                    {members.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddMemberForm(false);
+                          resetFamilyForm();
+                        }}
+                        className="text-sm text-slate-500 hover:text-slate-700"
+                      >
+                        Annuller
+                      </button>
+                    )}
+                  </form>
+                )}
+              </>
             )}
           </>
         )}

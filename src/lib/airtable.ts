@@ -663,9 +663,28 @@ function loginMatchesRecord(record: AirtableRecord, login: string): boolean {
     getFieldValue(record, BRUGERNAVN_FIELDS),
     getEmailFromRecord(record),
     getFieldValue(record, FAMILIE_FIELDS),
-    getFieldValue(record, NAVN_FIELDS),
   ];
   return candidates.some((c) => c && normalizeLoginName(c).toLowerCase() === target);
+}
+
+export function normalizeMemberName(navn: string): string {
+  return navn.trim().toLowerCase();
+}
+
+export async function listParticipantRecordIdsForName(
+  login: string,
+  navn: string
+): Promise<string[]> {
+  const target = normalizeMemberName(navn);
+  if (!target) return [];
+  const ids: string[] = [];
+  const records = await fetchAllRecords();
+  for (const record of records) {
+    if (!loginMatchesRecord(record, login)) continue;
+    const n = getFieldValue(record, NAVN_FIELDS);
+    if (n && normalizeMemberName(n) === target) ids.push(record.id);
+  }
+  return ids;
 }
 
 export async function getFamilyByEmail(email: string): Promise<string | null> {
@@ -1268,14 +1287,32 @@ export async function getFamilyMembersByEmail(email: string): Promise<FamilyMemb
   return getFamilyMembersByLogin(email);
 }
 
+function mergeFamilyMemberRow(a: FamilyMember, b: FamilyMember): FamilyMember {
+  const pick = (x: string | null, y: string | null) => (x?.trim() ? x : y);
+  return {
+    navn: a.navn,
+    workshop1: pick(a.workshop1, b.workshop1),
+    workshop2: pick(a.workshop2, b.workshop2),
+    workshop3: pick(a.workshop3, b.workshop3),
+    workshop4: pick(a.workshop4, b.workshop4),
+    voksen: pick(a.voksen, b.voksen),
+    aftengrupper: pick(a.aftengrupper, b.aftengrupper),
+    bornegrupper: pick(a.bornegrupper, b.bornegrupper),
+    alder: a.alder ?? b.alder,
+    type: a.type ?? b.type,
+  };
+}
+
 export async function getFamilyMembersByLogin(login: string): Promise<FamilyMember[]> {
   const records = await fetchAllRecords();
-  const members: FamilyMember[] = [];
+  const byName = new Map<string, FamilyMember>();
 
   for (const record of records) {
     if (!loginMatchesRecord(record, login)) continue;
 
-    const navn = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
+    const navn = getFieldValue(record, NAVN_FIELDS)?.trim();
+    if (!navn) continue;
+
     const workshop1 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1);
     const workshop2 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2);
     const workshop3 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3);
@@ -1286,7 +1323,7 @@ export async function getFamilyMembersByLogin(login: string): Promise<FamilyMemb
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
     const alder = parseAge(getFieldValue(record, ALDER_FIELD_OPTIONS));
 
-    members.push({
+    const member: FamilyMember = {
       navn,
       workshop1,
       workshop2,
@@ -1297,10 +1334,14 @@ export async function getFamilyMembersByLogin(login: string): Promise<FamilyMemb
       bornegrupper,
       alder,
       type,
-    });
+    };
+
+    const key = normalizeMemberName(navn);
+    const existing = byName.get(key);
+    byName.set(key, existing ? mergeFamilyMemberRow(existing, member) : member);
   }
 
-  return members;
+  return Array.from(byName.values()).sort((a, b) => a.navn.localeCompare(b.navn, "da"));
 }
 
 interface FamilyRaceMember {
