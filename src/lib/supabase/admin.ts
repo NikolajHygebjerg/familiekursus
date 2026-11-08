@@ -41,7 +41,7 @@ export function getSupabaseConfigError(): string | null {
     return "Supabase service-nøgle mangler. Sæt SUPABASE_SERVICE_ROLE_KEY i Vercel.";
   }
   if (key.startsWith("sb_publishable_")) {
-    return "SUPABASE_SERVICE_ROLE_KEY skal være service_role-nøglen (JWT), ikke publishable-nøglen.";
+    return "SUPABASE_SERVICE_ROLE_KEY skal være secret/service-nøglen, ikke publishable-nøglen.";
   }
   return null;
 }
