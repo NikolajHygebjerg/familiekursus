@@ -12,11 +12,13 @@ import {
   ADULT_MIN_AGE,
   ESCORT_SLOT_LABELS,
   YOUNG_CHILD_AGE_MAX_EXCLUSIVE,
+  childAllowsExternalFamilyEscort,
   childCanAttendWorkshopWithoutAdult,
+  childMustConfirmEscortPerSlot,
   findFamilyAdultOnChildSlot,
   getWorkshopAgeRule,
   isWorkshopBlockedForMember,
-  listAdultEscortGaps,
+  listChildEscortDecisionGaps,
   listWorkshopMinAgeViolations,
   mergeRosterWithClientMembers,
   memberIsAdult,
@@ -565,7 +567,7 @@ export default function WorkshopTilmeldingPage() {
             [gap.slot]: gap.workshopName,
           },
         };
-        const gaps = listAdultEscortGaps(
+        const gaps = listChildEscortDecisionGaps(
           rosterForEscort,
           next,
           externalEscortsRef.current,
@@ -596,7 +598,7 @@ export default function WorkshopTilmeldingPage() {
           ...prev,
           [gap.childNavn]: { ...(prev[gap.childNavn] || {}), [gap.slot]: name },
         };
-        const gaps = listAdultEscortGaps(
+        const gaps = listChildEscortDecisionGaps(
           rosterForEscort,
           draftRef.current,
           next,
@@ -607,6 +609,26 @@ export default function WorkshopTilmeldingPage() {
       });
     },
     [rosterForEscort]
+  );
+
+  const assignSoloToGap = useCallback(
+    (gap: AdultEscortGap) => {
+      setChildSoloWithoutAdult(gap.childNavn, gap.slot, true);
+      const gaps = listChildEscortDecisionGaps(
+        rosterForEscort,
+        draftRef.current,
+        externalEscortsRef.current,
+        {
+          ...soloWithoutAdultRef.current,
+          [gap.childNavn]: {
+            ...(soloWithoutAdultRef.current[gap.childNavn] || {}),
+            [gap.slot]: true,
+          },
+        }
+      );
+      setEscortQueue(gaps);
+    },
+    [rosterForEscort, setChildSoloWithoutAdult]
   );
 
   const submitWorkshops = useCallback(
@@ -634,7 +656,7 @@ export default function WorkshopTilmeldingPage() {
         return;
       }
 
-      const escortGaps = listAdultEscortGaps(
+      const escortGaps = listChildEscortDecisionGaps(
         rosterForEscort,
         currentDraft,
         currentEscorts,
@@ -774,7 +796,7 @@ export default function WorkshopTilmeldingPage() {
       return;
     }
 
-    const escortGaps = listAdultEscortGaps(
+    const escortGaps = listChildEscortDecisionGaps(
       rosterForEscort,
       liveDraft,
       externalEscortsRef.current,
@@ -783,7 +805,7 @@ export default function WorkshopTilmeldingPage() {
     if (escortGaps.length > 0) {
       const g = escortGaps[0];
       setError(
-        `${g.childNavn} skal have en voksen på ${SLOT_LABELS[g.slot]} (${g.workshopName}) — vælg ledsager, eller kryds «Deltager uden voksen» hvis barnet er gammel nok.`
+        `${g.childNavn} på ${SLOT_LABELS[g.slot]} (${g.workshopName}): vælg en voksen fra familien, eller «Deltager uden voksen» hvis barnet er gammel nok. Ledsager fra anden familie gælder kun under 10 år.`
       );
       return;
     }
@@ -877,9 +899,10 @@ export default function WorkshopTilmeldingPage() {
           <>
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Børnenes workshops</h1>
             <p className="mb-4 text-sm text-slate-600">
-              Vælg workshop for hvert barn. Under {YOUNG_CHILD_AGE_MAX_EXCLUSIVE} år skal der vælges en voksen
-              ({ADULT_MIN_AGE}+) fra familien på samme hold. Fra 10 år (15 år ved Adventurerace) kan barnet
-              krydses som <strong>deltager uden voksen</strong>. Adventurerace: min. 10 år.
+              Vælg workshop for hvert barn. Under {YOUNG_CHILD_AGE_MAX_EXCLUSIVE} år skal der vælges en voksen (
+              {ADULT_MIN_AGE}+) fra familien på samme hold — eller en navngiven voksen fra en anden familie. Fra 10
+              år vælger I en voksen fra familien eller krydser <strong>deltager uden voksen</strong> (15 år ved
+              Adventurerace). Adventurerace: min. 10 år.
             </p>
 
             {loading ? (
@@ -1069,9 +1092,11 @@ export default function WorkshopTilmeldingPage() {
             key={`${escortQueue[0].childNavn}:${escortQueue[0].slot}:${escortQueue[0].workshopName}`}
             gap={escortQueue[0]}
             queueSize={escortQueue.length}
+            child={members.find((m) => m.navn === escortQueue[0].childNavn) ?? null}
             adults={adultsInFamily}
             onAssignFamily={(adultNavn) => assignFamilyAdultToGap(escortQueue[0], adultNavn)}
             onAssignExternal={(voksenNavn) => assignExternalAdultToGap(escortQueue[0], voksenNavn)}
+            onAssignSolo={() => assignSoloToGap(escortQueue[0])}
             onDismiss={() => setEscortQueue([])}
           />
         )}
@@ -1121,7 +1146,11 @@ function ChildWorkshopCard({
         {SLOT_KEYS.map((slot) => {
           const workshopName = draft[child.navn]?.[slot] || "";
           const needsAdult = memberNeedsAdultOnWorkshop(child, workshopName);
+          const showEscort =
+            Boolean(workshopName) &&
+            (needsAdult || childMustConfirmEscortPerSlot(child));
           const canSolo = childCanAttendWorkshopWithoutAdult(child, workshopName);
+          const allowExternal = childAllowsExternalFamilyEscort(child);
           const solo = Boolean(soloWithoutAdult[child.navn]?.[slot]);
           const externalName = externalEscorts[child.navn]?.[slot] || "";
           const familyEscort =
@@ -1159,7 +1188,7 @@ function ChildWorkshopCard({
                 ))}
               </select>
 
-              {workshopName && needsAdult && (
+              {showEscort && (
                 <div className="space-y-2 border-t border-slate-200 pt-2">
                   {canSolo && (
                     <label className="flex cursor-pointer items-center gap-2 text-slate-700">
@@ -1206,11 +1235,13 @@ function ChildWorkshopCard({
                             {a.alder != null ? ` (${a.alder} år)` : ""}
                           </option>
                         ))}
-                        <option value={EXTERNAL_FAMILY_ESCORT_VALUE}>
-                          Vælg en voksen fra en anden familie (fornavn)
-                        </option>
+                        {allowExternal && (
+                          <option value={EXTERNAL_FAMILY_ESCORT_VALUE}>
+                            Vælg en voksen fra en anden familie (fornavn)
+                          </option>
+                        )}
                       </select>
-                      {(externalName || externalEscortActive[slot]) && (
+                      {allowExternal && (externalName || externalEscortActive[slot]) && (
                         <input
                           type="text"
                           value={externalName}
@@ -1280,21 +1311,30 @@ function FamilyMemberFields(props: {
 function AdultEscortDialog({
   gap,
   queueSize,
+  child,
   adults,
   onAssignFamily,
   onAssignExternal,
+  onAssignSolo,
   onDismiss,
 }: {
   gap: AdultEscortGap;
   queueSize: number;
+  child: FamilyMember | null;
   adults: FamilyMember[];
   onAssignFamily: (adultNavn: string) => void;
   onAssignExternal: (voksenNavn: string) => void;
+  onAssignSolo: () => void;
   onDismiss: () => void;
 }) {
   const [mode, setMode] = useState<"choose" | "family" | "external">("choose");
   const [selectedAdult, setSelectedAdult] = useState("");
   const [externalName, setExternalName] = useState("");
+  const allowExternal = child ? childAllowsExternalFamilyEscort(child) : false;
+  const canSolo =
+    child && gap.workshopName
+      ? childCanAttendWorkshopWithoutAdult(child, gap.workshopName)
+      : false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1318,13 +1358,24 @@ function AdultEscortDialog({
             >
               Vælg voksen fra jeres familie
             </button>
-            <button
-              type="button"
-              onClick={() => setMode("external")}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
-            >
-              Følges med voksen fra anden familie
-            </button>
+            {allowExternal && (
+              <button
+                type="button"
+                onClick={() => setMode("external")}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+              >
+                Følges med voksen fra anden familie
+              </button>
+            )}
+            {canSolo && (
+              <button
+                type="button"
+                onClick={onAssignSolo}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900"
+              >
+                Deltager uden voksen
+              </button>
+            )}
             <button type="button" onClick={onDismiss} className="text-sm text-slate-500 hover:underline">
               Gå tilbage og vælg andre workshops
             </button>
@@ -1335,8 +1386,8 @@ function AdultEscortDialog({
           <div className="space-y-3">
             {adults.length === 0 ? (
               <p className="text-sm text-amber-800">
-                I har ingen voksne (18+) i familien. Tilføj en voksen under Familie, eller vælg
-                ledsager fra anden familie.
+                I har ingen voksne (18+) i familien. Tilføj en voksen under Familie
+                {allowExternal ? ", eller vælg ledsager fra anden familie." : canSolo ? ", eller vælg deltager uden voksen." : "."}
               </p>
             ) : (
               <>

@@ -16,6 +16,7 @@ import {
   type EscortWorkshopSlot,
   type ExternalEscortDraft,
   type WorkshopChoiceDraft,
+  childAllowsExternalFamilyEscort,
   formatExternalEscortLabel,
   listAdultEscortGaps,
   listWorkshopMinAgeViolations,
@@ -149,6 +150,27 @@ export async function POST(request: Request) {
       );
       const workshopDraft = buildWorkshopDraftFromPayload(members);
       const externalEscorts = buildExternalEscortsFromPayload(members);
+      const rosterByNavn = new Map(roster.map((m) => [m.navn.trim().toLowerCase(), m]));
+      for (const member of members) {
+        const navn = member.navn?.trim();
+        if (!navn) continue;
+        const rosterMember = rosterByNavn.get(navn.toLowerCase());
+        if (!rosterMember) continue;
+        const escortSlots: EscortWorkshopSlot[] = ["workshop1", "workshop2", "workshop3", "workshop4"];
+        for (const slot of escortSlots) {
+          const extName = member[LEDSAGER_PAYLOAD_KEY[slot]]?.trim();
+          if (!extName) continue;
+          if (!childAllowsExternalFamilyEscort(rosterMember)) {
+            return NextResponse.json(
+              {
+                error: `${navn}: ledsager fra anden familie gælder kun for børn under 10 år. Vælg voksen fra familien eller deltager uden voksen.`,
+                code: "ADULT_ESCORT_REQUIRED",
+              },
+              { status: 409 }
+            );
+          }
+        }
+      }
       const minAgeViolations = listWorkshopMinAgeViolations(roster, workshopDraft);
       if (minAgeViolations.length > 0) {
         return NextResponse.json(
@@ -166,7 +188,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error:
-              "Nogle børn skal have en voksen (18+) på samme workshop, eller angive ledsager fra anden familie.",
+              "Nogle børn mangler valg af voksen fra familien (eller deltager uden voksen for 10+). Under 10 år kan der angives ledsager fra anden familie.",
             code: "ADULT_ESCORT_REQUIRED",
             gaps: escortGaps,
           },
@@ -264,7 +286,12 @@ export async function POST(request: Request) {
           const extName = member[LEDSAGER_PAYLOAD_KEY[slot]]?.trim();
           const ledsagerField = fieldResolvers.ledsager[slot];
           if (!ledsagerField) continue;
-          if (extName) {
+          const rosterMember = rosterByNavn.get(navn.toLowerCase());
+          if (
+            extName &&
+            rosterMember &&
+            childAllowsExternalFamilyEscort(rosterMember)
+          ) {
             fields[ledsagerField] = formatExternalEscortLabel(extName);
           } else {
             fields[ledsagerField] = "";

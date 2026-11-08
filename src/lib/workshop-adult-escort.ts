@@ -70,6 +70,18 @@ export function memberIsYoungChild(member: RosterMember): boolean {
   return member.alder != null && member.alder < YOUNG_CHILD_AGE_MAX_EXCLUSIVE;
 }
 
+/** Kun børn under 10 må have ledsager fra anden familie. */
+export function childAllowsExternalFamilyEscort(member: RosterMember): boolean {
+  if (memberIsAdult(member)) return false;
+  if (member.alder == null) return true;
+  return member.alder < YOUNG_CHILD_AGE_MAX_EXCLUSIVE;
+}
+
+/** Børn 10+ skal aktivt vælge voksen fra familien eller «uden voksen» pr. hold. */
+export function childMustConfirmEscortPerSlot(member: RosterMember): boolean {
+  return !memberIsAdult(member) && member.alder != null && member.alder >= YOUNG_CHILD_AGE_MAX_EXCLUSIVE;
+}
+
 /** Om deltageren må vælge workshoppen (fx Adventurerace kræver min. 10 år). */
 export function isWorkshopBlockedForMember(
   member: RosterMember,
@@ -212,7 +224,7 @@ export function listAdultEscortGaps(
       if (soloWithoutAdult[member.navn]?.[slot]) continue;
 
       const external = externalEscorts[member.navn]?.[slot]?.trim();
-      if (external) continue;
+      if (external && childAllowsExternalFamilyEscort(member)) continue;
 
       const workshopNorm = normalizeWorkshopName(workshopName);
       const hasFamilyAdultOnWorkshop = adults.some((adult) => {
@@ -227,6 +239,78 @@ export function listAdultEscortGaps(
           adultRequiredBelowAge: adultRequiredBelowAgeForWorkshop(workshopName),
         });
       }
+    }
+  }
+
+  return gaps;
+}
+
+export function isChildEscortSlotResolved(
+  member: RosterMember,
+  slot: EscortWorkshopSlot,
+  workshopName: string,
+  adults: RosterMember[],
+  workshopDraft: WorkshopChoiceDraft,
+  externalEscorts: ExternalEscortDraft,
+  soloWithoutAdult: SoloWithoutAdultDraft
+): boolean {
+  if (soloWithoutAdult[member.navn]?.[slot]) return true;
+
+  if (childAllowsExternalFamilyEscort(member)) {
+    const external = externalEscorts[member.navn]?.[slot]?.trim();
+    if (external) return true;
+  }
+
+  const workshopNorm = normalizeWorkshopName(workshopName);
+  const hasFamilyAdultOnWorkshop = adults.some((adult) => {
+    if (!memberIsAdult(adult)) return false;
+    const adultChoice = workshopDraft[adult.navn]?.[slot]?.trim();
+    return adultChoice != null && normalizeWorkshopName(adultChoice) === workshopNorm;
+  });
+  if (hasFamilyAdultOnWorkshop) return true;
+
+  if (memberNeedsAdultOnWorkshop(member, workshopName)) return false;
+  if (childMustConfirmEscortPerSlot(member)) return false;
+
+  return true;
+}
+
+export function listChildEscortDecisionGaps(
+  members: RosterMember[],
+  workshopDraft: WorkshopChoiceDraft,
+  externalEscorts: ExternalEscortDraft,
+  soloWithoutAdult: SoloWithoutAdultDraft = {}
+): AdultEscortGap[] {
+  const adults = members.filter(memberIsAdult);
+  const gaps: AdultEscortGap[] = [];
+
+  for (const member of members) {
+    if (memberIsAdult(member)) continue;
+    const choices = workshopDraft[member.navn];
+    if (!choices) continue;
+
+    for (const slot of ESCORT_WORKSHOP_SLOTS) {
+      const workshopName = choices[slot]?.trim();
+      if (!workshopName) continue;
+      if (
+        isChildEscortSlotResolved(
+          member,
+          slot,
+          workshopName,
+          adults,
+          workshopDraft,
+          externalEscorts,
+          soloWithoutAdult
+        )
+      ) {
+        continue;
+      }
+      gaps.push({
+        childNavn: member.navn,
+        slot,
+        workshopName,
+        adultRequiredBelowAge: adultRequiredBelowAgeForWorkshop(workshopName),
+      });
     }
   }
 
