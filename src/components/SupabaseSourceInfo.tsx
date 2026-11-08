@@ -21,6 +21,8 @@ type StatusPayload = {
     checkedAt: string;
     vercelEnv: string | null;
     deployRef: string | null;
+    dataStaleWarning?: boolean;
+    rosterFromLegacyCount?: number;
   };
 };
 
@@ -97,9 +99,16 @@ export default function SupabaseSourceInfo() {
               {typeof status?.rosterMemberCount === "number" && status.login && (
                 <p>
                   <span className="text-slate-500">Familie {status.login} (app):</span>{" "}
-                  {status.rosterMemberCount} medlemmer · tabel tæller{" "}
-                  {status.participants2027RowCount ?? "?"}{" "}
-                  {ds.participantsTableKey.replace("participants_", "")}-deltagere i alt
+                  {status.rosterMemberCount} medlemmer ·{" "}
+                  <code>{ds.participantsTableKey}</code>:{" "}
+                  {status.participants2027RowCount ?? 0} rækker
+                </p>
+              )}
+              {ds.dataStaleWarning && (
+                <p className="rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">
+                  Forældet cache: deltager-opslag fandt {ds.rosterFromLegacyCount ?? "?"} medlemmer, men{" "}
+                  <code>{ds.participantsTableKey}</code> er tom i databasen. Appen viser nu 0 — tryk Opdater
+                  efter deploy med no-cache fix.
                 </p>
               )}
               <p>

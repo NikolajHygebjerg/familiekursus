@@ -60,6 +60,18 @@ export function createAdminClient() {
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     realtime: { transport: ws as unknown as typeof WebSocket },
+    global: {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          cache: "no-store",
+          headers: {
+            ...(init?.headers ?? {}),
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        }),
+    },
   });
 }
 

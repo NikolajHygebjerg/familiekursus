@@ -60,6 +60,30 @@ export function normalizeTableKey(tableIdOrName: string): string {
 
 const PAGE_SIZE = 1000;
 
+/** Én sandhedskilde: alle rækkers table_key (til status / afstemning med SQL). */
+export async function countFkRecordsByTableKey(): Promise<Record<string, number>> {
+  const supabase = createAdminClient();
+  const counts: Record<string, number> = {};
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("fk_records")
+      .select("table_key")
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) break;
+    const batch = data ?? [];
+    for (const row of batch) {
+      const key = String(row.table_key ?? "");
+      if (!key) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    if (batch.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return counts;
+}
+
 /** jsonb kan i sjældne tilfælde komme tilbage som (dobbelt-)encodet JSON-streng — parser til objekt. */
 export function coerceFkFields(raw: unknown): Record<string, unknown> {
   if (raw == null) return {};

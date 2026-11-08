@@ -1,6 +1,7 @@
 import { UGEPROGRAM, appendVoksencafeProgram } from "@/data/program";
 import { normalizeMoedOsStoredImage, toAbsoluteMoedOsImageUrl } from "@/lib/blob-config";
 import {
+  countFkRecordsByTableKey,
   createFkRecord,
   deleteFkRecord,
   fetchFkRecords,
@@ -1371,6 +1372,12 @@ function mergeFamilyMemberRow(a: FamilyMember, b: FamilyMember): FamilyMember {
 }
 
 export async function getFamilyMembersByLogin(login: string): Promise<FamilyMember[]> {
+  const counts = await countFkRecordsByTableKey();
+  const participantsKey = `participants_${getKursusYear()}`;
+  if ((counts[participantsKey] ?? 0) === 0) {
+    return [];
+  }
+
   const records = await fetchAllRecords();
   const byName = new Map<string, FamilyMember>();
 

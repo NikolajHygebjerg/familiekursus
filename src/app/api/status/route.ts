@@ -1,6 +1,6 @@
 import { getFamilyMembersByLogin, normalizeLoginName } from "@/lib/airtable";
 import { getKursusYear } from "@/lib/kursus-year";
-import { coerceFkFields, fetchFkRecords } from "@/lib/fk-records";
+import { coerceFkFields, countFkRecordsByTableKey, fetchFkRecords } from "@/lib/fk-records";
 import {
   createAdminClient,
   getSupabaseProjectRef,
@@ -12,47 +12,28 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-async function countFkRecordsByTableKey(): Promise<Record<string, number>> {
-  const supabase = createAdminClient();
-  const counts: Record<string, number> = {};
-  let from = 0;
-  const pageSize = 1000;
-  while (true) {
-    const { data, error } = await supabase
-      .from("fk_records")
-      .select("table_key")
-      .range(from, from + pageSize - 1);
-    if (error) break;
-    const batch = data ?? [];
-    for (const row of batch) {
-      const key = String(row.table_key ?? "");
-      if (!key) continue;
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    if (batch.length < pageSize) break;
-    from += pageSize;
-  }
-  return counts;
-}
-
 /** Offentlig sundhedstjek — ingen hemmeligheder (hjælper med at afstemme Vercel-env). */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const login = normalizeLoginName(url.searchParams.get("login") ?? "");
   const debug = url.searchParams.get("debug") === "1";
-  const rosterCount =
-    login.length > 0 ? (await getFamilyMembersByLogin(login)).length : undefined;
 
-  let participants2027RowCount: number | null = null;
+  let tableKeyCounts: Record<string, number> = {};
   try {
-    const supabase = createAdminClient();
-    const { count, error } = await supabase
-      .from("fk_records")
-      .select("*", { count: "exact", head: true })
-      .eq("table_key", `participants_${getKursusYear()}`);
-    if (!error && count != null) participants2027RowCount = count;
+    tableKeyCounts = await countFkRecordsByTableKey();
   } catch {
-    participants2027RowCount = null;
+    tableKeyCounts = {};
+  }
+  const year = getKursusYear();
+  const participantsTableKey = `participants_${year}`;
+  const participantsRowCount = tableKeyCounts[participantsTableKey] ?? 0;
+
+  let rosterCount: number | undefined;
+  let rosterFromLegacyCount: number | undefined;
+  if (login.length > 0) {
+    rosterFromLegacyCount = (await getFamilyMembersByLogin(login)).length;
+    rosterCount =
+      participantsRowCount > 0 ? rosterFromLegacyCount : 0;
   }
 
   let fieldsDebug:
@@ -102,23 +83,19 @@ export async function GET(request: Request) {
     }
   }
 
-  let tableKeyCounts: Record<string, number> = {};
-  try {
-    tableKeyCounts = await countFkRecordsByTableKey();
-  } catch {
-    tableKeyCounts = {};
-  }
   const fkRecordsTotal = Object.values(tableKeyCounts).reduce((a, b) => a + b, 0);
-  const year = getKursusYear();
-  const participantsTableKey = `participants_${year}`;
   const deployRef = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null;
+  const dataStaleWarning =
+    participantsRowCount === 0 &&
+    login.length > 0 &&
+    (rosterFromLegacyCount ?? 0) > 0;
 
   return NextResponse.json({
     ok: true,
     kursusYear: year,
     supabaseConfigured: isSupabaseConfigured(),
     supabaseProjectRef: getSupabaseProjectRef(),
-    participants2027RowCount,
+    participants2027RowCount: participantsRowCount,
     dataSource: {
       host: getSupabasePublicHost(),
       projectRef: getSupabaseProjectRef(),
@@ -129,6 +106,8 @@ export async function GET(request: Request) {
       checkedAt: new Date().toISOString(),
       vercelEnv: process.env.VERCEL_ENV ?? null,
       deployRef,
+      dataStaleWarning,
+      rosterFromLegacyCount: login.length > 0 ? rosterFromLegacyCount : undefined,
     },
     ...(fieldsDebug ? { fieldsDebug } : {}),
     ...(login.length > 0 ? { login, rosterMemberCount: rosterCount } : {}),
