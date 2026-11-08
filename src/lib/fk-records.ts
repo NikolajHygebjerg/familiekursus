@@ -60,6 +60,33 @@ export function normalizeTableKey(tableIdOrName: string): string {
 
 const PAGE_SIZE = 1000;
 
+/** jsonb kan i sjældne tilfælde komme tilbage som (dobbelt-)encodet JSON-streng — parser til objekt. */
+export function coerceFkFields(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw !== "string") return {};
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  try {
+    let parsed: unknown = JSON.parse(trimmed);
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        return {};
+      }
+    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return {};
+  }
+  return {};
+}
+
 export async function fetchFkRecords(tableIdOrName: string): Promise<FkRecord[]> {
   const tableKey = normalizeTableKey(tableIdOrName);
   const supabase = createAdminClient();
@@ -80,7 +107,7 @@ export async function fetchFkRecords(tableIdOrName: string): Promise<FkRecord[]>
 
     const batch = (data ?? []).map((row) => ({
       id: row.id as string,
-      fields: (row.fields ?? {}) as Record<string, unknown>,
+      fields: coerceFkFields(row.fields),
     }));
 
     all.push(...batch);
@@ -135,7 +162,7 @@ export async function updateFkRecord(
   }
 
   const merged = {
-    ...((existing.fields ?? {}) as Record<string, unknown>),
+    ...coerceFkFields(existing.fields),
     ...fields,
   };
 

@@ -1,5 +1,6 @@
 import { getFamilyMembersByLogin, normalizeLoginName } from "@/lib/airtable";
 import { getKursusYear } from "@/lib/kursus-year";
+import { coerceFkFields } from "@/lib/fk-records";
 import {
   createAdminClient,
   getSupabaseProjectRef,
@@ -12,7 +13,9 @@ export const runtime = "nodejs";
 
 /** Offentlig sundhedstjek — ingen hemmeligheder (hjælper med at afstemme Vercel-env). */
 export async function GET(request: Request) {
-  const login = normalizeLoginName(new URL(request.url).searchParams.get("login") ?? "");
+  const url = new URL(request.url);
+  const login = normalizeLoginName(url.searchParams.get("login") ?? "");
+  const debug = url.searchParams.get("debug") === "1";
   const rosterCount =
     login.length > 0 ? (await getFamilyMembersByLogin(login)).length : undefined;
 
@@ -28,12 +31,39 @@ export async function GET(request: Request) {
     participants2027RowCount = null;
   }
 
+  let fieldsDebug: { sampleFieldsType: string; coercedNavnCount: number } | undefined;
+  if (debug) {
+    try {
+      const supabase = createAdminClient();
+      const { data } = await supabase
+        .from("fk_records")
+        .select("fields")
+        .eq("table_key", `participants_${getKursusYear()}`)
+        .limit(20);
+      const rows = data ?? [];
+      let coercedNavnCount = 0;
+      for (const row of rows) {
+        const fields = coerceFkFields(row.fields);
+        const navn = fields.Navn ?? fields.navn ?? fields.Name;
+        if (typeof navn === "string" && navn.trim()) coercedNavnCount += 1;
+      }
+      const sample = rows[0]?.fields;
+      fieldsDebug = {
+        sampleFieldsType: sample == null ? "null" : typeof sample,
+        coercedNavnCount,
+      };
+    } catch {
+      fieldsDebug = { sampleFieldsType: "error", coercedNavnCount: 0 };
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     kursusYear: getKursusYear(),
     supabaseConfigured: isSupabaseConfigured(),
     supabaseProjectRef: getSupabaseProjectRef(),
     participants2027RowCount,
+    ...(fieldsDebug ? { fieldsDebug } : {}),
     ...(login.length > 0 ? { login, rosterMemberCount: rosterCount } : {}),
   });
 }
