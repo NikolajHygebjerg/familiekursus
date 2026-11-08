@@ -41,6 +41,13 @@ export const WORKSHOP_FIELDS: Record<string, string[]> = {
   voksen: ["Workshop Forældre", "Forældreworkshop", "A Workshop Forældre", "A Forældreworkshop"],
 };
 
+export const WORKSHOP_LEDSAGER_FIELDS: Record<string, string[]> = {
+  workshop1: ["Workshop 1 ledsager", "A Workshop 1 ledsager", "Ledsager workshop 1"],
+  workshop2: ["Workshop 2 ledsager", "A Workshop 2 ledsager", "Ledsager workshop 2"],
+  workshop3: ["Workshop 3 ledsager", "A Workshop 3 ledsager", "Ledsager workshop 3"],
+  workshop4: ["Workshop 4 ledsager", "A Workshop 4 ledsager", "Ledsager workshop 4"],
+};
+
 export interface AirtableRecord {
   id: string;
   fields: Record<string, unknown>;
@@ -1236,6 +1243,10 @@ export interface FamilyMember {
   workshop3: string | null;
   workshop4: string | null;
   voksen: string | null;
+  ledsager1: string | null;
+  ledsager2: string | null;
+  ledsager3: string | null;
+  ledsager4: string | null;
   aftengrupper: string | null;
   bornegrupper: string | null;
   alder: number | null;
@@ -1261,6 +1272,10 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
     const workshop3 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3);
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
+    const ledsager1 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop1);
+    const ledsager2 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop2);
+    const ledsager3 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop3);
+    const ledsager4 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop4);
     const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
     const bornegrupper = getBornegruppeFromRecord(record);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
@@ -1273,6 +1288,10 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
       workshop3,
       workshop4,
       voksen,
+      ledsager1,
+      ledsager2,
+      ledsager3,
+      ledsager4,
       aftengrupper,
       bornegrupper,
       alder,
@@ -1296,6 +1315,10 @@ function mergeFamilyMemberRow(a: FamilyMember, b: FamilyMember): FamilyMember {
     workshop3: pick(a.workshop3, b.workshop3),
     workshop4: pick(a.workshop4, b.workshop4),
     voksen: pick(a.voksen, b.voksen),
+    ledsager1: pick(a.ledsager1, b.ledsager1),
+    ledsager2: pick(a.ledsager2, b.ledsager2),
+    ledsager3: pick(a.ledsager3, b.ledsager3),
+    ledsager4: pick(a.ledsager4, b.ledsager4),
     aftengrupper: pick(a.aftengrupper, b.aftengrupper),
     bornegrupper: pick(a.bornegrupper, b.bornegrupper),
     alder: a.alder ?? b.alder,
@@ -1318,6 +1341,10 @@ export async function getFamilyMembersByLogin(login: string): Promise<FamilyMemb
     const workshop3 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3);
     const workshop4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
     const voksen = getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
+    const ledsager1 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop1);
+    const ledsager2 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop2);
+    const ledsager3 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop3);
+    const ledsager4 = getFirstWorkshopValue(record, WORKSHOP_LEDSAGER_FIELDS.workshop4);
     const aftengrupper = getFieldValue(record, ACTIVITY_FIELD_OPTIONS.aftengrupper);
     const bornegrupper = getBornegruppeFromRecord(record);
     const type = getFieldValue(record, BARN_VOKSEN_FIELDS);
@@ -1330,6 +1357,10 @@ export async function getFamilyMembersByLogin(login: string): Promise<FamilyMemb
       workshop3,
       workshop4,
       voksen,
+      ledsager1,
+      ledsager2,
+      ledsager3,
+      ledsager4,
       aftengrupper,
       bornegrupper,
       alder,

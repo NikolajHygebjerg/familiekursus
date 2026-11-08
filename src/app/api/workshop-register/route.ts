@@ -1,6 +1,7 @@
 import {
   createAirtableRecord,
   deleteAirtableRecord,
+  getFamilyMembersByLogin,
   getParticipantRecordIdsByLogin,
   getYearTableId,
   hasWorkshopRegistration,
@@ -8,8 +9,17 @@ import {
   normalizeLoginName,
   updateAirtableRecord,
   WORKSHOP_FIELDS,
+  WORKSHOP_LEDSAGER_FIELDS,
   type WorkshopSlotKey,
 } from "@/lib/airtable";
+import {
+  type EscortWorkshopSlot,
+  type ExternalEscortDraft,
+  type WorkshopChoiceDraft,
+  formatExternalEscortLabel,
+  listAdultEscortGaps,
+  listWorkshopMinAgeViolations,
+} from "@/lib/workshop-adult-escort";
 import { validateWorkshopPicksForLogin } from "@/lib/workshop-capacity";
 import { getKursusYear } from "@/lib/kursus-year";
 import { NextResponse } from "next/server";
@@ -32,7 +42,52 @@ type MemberWorkshops = {
   workshop3?: string;
   workshop4?: string;
   voksen?: string;
+  ledsager1?: string;
+  ledsager2?: string;
+  ledsager3?: string;
+  ledsager4?: string;
 };
+
+function ledsagerFieldName(slot: EscortWorkshopSlot): string {
+  return WORKSHOP_LEDSAGER_FIELDS[slot][0];
+}
+
+function buildWorkshopDraftFromPayload(members: MemberWorkshops[]): WorkshopChoiceDraft {
+  const draft: WorkshopChoiceDraft = {};
+  for (const m of members) {
+    draft[m.navn] = {
+      workshop1: m.workshop1?.trim() || "",
+      workshop2: m.workshop2?.trim() || "",
+      workshop3: m.workshop3?.trim() || "",
+      workshop4: m.workshop4?.trim() || "",
+    };
+  }
+  return draft;
+}
+
+const LEDSAGER_PAYLOAD_KEY: Record<
+  EscortWorkshopSlot,
+  "ledsager1" | "ledsager2" | "ledsager3" | "ledsager4"
+> = {
+  workshop1: "ledsager1",
+  workshop2: "ledsager2",
+  workshop3: "ledsager3",
+  workshop4: "ledsager4",
+};
+
+function buildExternalEscortsFromPayload(members: MemberWorkshops[]): ExternalEscortDraft {
+  const external: ExternalEscortDraft = {};
+  const slots: EscortWorkshopSlot[] = ["workshop1", "workshop2", "workshop3", "workshop4"];
+  for (const m of members) {
+    for (const slot of slots) {
+      const raw = m[LEDSAGER_PAYLOAD_KEY[slot]]?.trim();
+      if (!raw) continue;
+      if (!external[m.navn]) external[m.navn] = {};
+      external[m.navn][slot] = raw;
+    }
+  }
+  return external;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +124,34 @@ export async function POST(request: Request) {
 
       if (members.length === 0) {
         return NextResponse.json({ error: "Ingen deltagere angivet" }, { status: 400 });
+      }
+
+      const roster = await getFamilyMembersByLogin(login);
+      const workshopDraft = buildWorkshopDraftFromPayload(members);
+      const externalEscorts = buildExternalEscortsFromPayload(members);
+      const minAgeViolations = listWorkshopMinAgeViolations(roster, workshopDraft);
+      if (minAgeViolations.length > 0) {
+        return NextResponse.json(
+          {
+            error: "En eller flere workshops har ikke opfyldt minimumsalder.",
+            code: "WORKSHOP_MIN_AGE",
+            violations: minAgeViolations,
+          },
+          { status: 409 }
+        );
+      }
+
+      const escortGaps = listAdultEscortGaps(roster, workshopDraft, externalEscorts);
+      if (escortGaps.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Nogle børn skal have en voksen (18+) på samme workshop, eller angive ledsager fra anden familie.",
+            code: "ADULT_ESCORT_REQUIRED",
+            gaps: escortGaps,
+          },
+          { status: 409 }
+        );
       }
 
       const recordIds = await getParticipantRecordIdsByLogin(login);
@@ -151,6 +234,17 @@ export async function POST(request: Request) {
           }
           const value = member[slot]?.trim();
           if (value) fields[fieldName(slot)] = value;
+        }
+
+        const escortSlots: EscortWorkshopSlot[] = ["workshop1", "workshop2", "workshop3", "workshop4"];
+        for (const slot of escortSlots) {
+          const extName = member[LEDSAGER_PAYLOAD_KEY[slot]]?.trim();
+          const ledsagerField = ledsagerFieldName(slot);
+          if (extName) {
+            fields[ledsagerField] = formatExternalEscortLabel(extName);
+          } else {
+            fields[ledsagerField] = "";
+          }
         }
 
         if (Object.keys(fields).length > 0) {

@@ -5,6 +5,20 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_KURSUS_YEAR } from "@/lib/kursus-year";
 import type { WorkshopSlotKey } from "@/lib/airtable";
+import {
+  type AdultEscortGap,
+  type ExternalEscortDraft,
+  ADULT_MIN_AGE,
+  ESCORT_SLOT_LABELS,
+  YOUNG_CHILD_AGE_MAX_EXCLUSIVE,
+  getWorkshopAgeRule,
+  isWorkshopBlockedForMember,
+  listAdultEscortGaps,
+  listWorkshopMinAgeViolations,
+  memberIsAdult,
+  memberNeedsAdultOnWorkshop,
+  parseExternalEscortName,
+} from "@/lib/workshop-adult-escort";
 
 const SLOT_KEYS = ["workshop1", "workshop2", "workshop3", "workshop4"] as const;
 type MainWorkshopSlot = (typeof SLOT_KEYS)[number];
@@ -23,6 +37,11 @@ interface FamilyMember {
   workshop2: string | null;
   workshop3: string | null;
   workshop4: string | null;
+  ledsager1?: string | null;
+  ledsager2?: string | null;
+  ledsager3?: string | null;
+  ledsager4?: string | null;
+  type?: string | null;
 }
 
 interface WorkshopOptionDetail {
@@ -48,7 +67,11 @@ type Step = "family" | "workshops";
 type WorkshopPersonDraft = Record<MainWorkshopSlot, string>;
 type WorkshopDraft = Record<string, WorkshopPersonDraft>;
 
-function optionLabel(opt: WorkshopOptionDetail): string {
+function optionLabel(opt: WorkshopOptionDetail, member: FamilyMember): string {
+  if (isWorkshopBlockedForMember(member, opt.name)) {
+    const rule = getWorkshopAgeRule(opt.name);
+    return `${opt.name} (min. ${rule?.minAge ?? "?"} år)`;
+  }
   if (opt.soldOut) return `${opt.name} (fuldt booket)`;
   if (opt.remaining !== null) {
     const unitLabel = opt.unit === "family" ? "familier" : "pladser";
@@ -77,6 +100,8 @@ export default function WorkshopTilmeldingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<CapacityConflict[] | null>(null);
+  const [escortQueue, setEscortQueue] = useState<AdultEscortGap[]>([]);
+  const [externalEscorts, setExternalEscorts] = useState<ExternalEscortDraft>({});
   const [showAddMemberForm, setShowAddMemberForm] = useState(true);
 
   const goToApp = useCallback(
@@ -94,6 +119,13 @@ export default function WorkshopTilmeldingPage() {
 
   const syncDraftFromMembers = useCallback((mems: FamilyMember[]) => {
     const next: WorkshopDraft = {};
+    const escorts: ExternalEscortDraft = {};
+    const ledsagerBySlot: Record<MainWorkshopSlot, keyof FamilyMember> = {
+      workshop1: "ledsager1",
+      workshop2: "ledsager2",
+      workshop3: "ledsager3",
+      workshop4: "ledsager4",
+    };
     for (const m of mems) {
       next[m.navn] = {
         workshop1: m.workshop1 || "",
@@ -101,8 +133,16 @@ export default function WorkshopTilmeldingPage() {
         workshop3: m.workshop3 || "",
         workshop4: m.workshop4 || "",
       };
+      for (const slot of SLOT_KEYS) {
+        const parsed = parseExternalEscortName(m[ledsagerBySlot[slot]] as string | null);
+        if (parsed) {
+          if (!escorts[m.navn]) escorts[m.navn] = {};
+          escorts[m.navn][slot] = parsed;
+        }
+      }
     }
     setDraft(next);
+    setExternalEscorts(escorts);
   }, []);
 
   const applyMembersList = useCallback(
@@ -263,7 +303,65 @@ export default function WorkshopTilmeldingPage() {
         workshop2: draft[m.navn]?.workshop2 || "",
         workshop3: draft[m.navn]?.workshop3 || "",
         workshop4: draft[m.navn]?.workshop4 || "",
+        ledsager1: externalEscorts[m.navn]?.workshop1 || "",
+        ledsager2: externalEscorts[m.navn]?.workshop2 || "",
+        ledsager3: externalEscorts[m.navn]?.workshop3 || "",
+        ledsager4: externalEscorts[m.navn]?.workshop4 || "",
       })),
+    [members, draft, externalEscorts]
+  );
+
+  const adultsInFamily = useMemo(
+    () => members.filter((m) => memberIsAdult(m)),
+    [members]
+  );
+
+  const assignFamilyAdultToGap = useCallback(
+    (gap: AdultEscortGap, adultNavn: string) => {
+      setDraft((prev) => {
+        const next: WorkshopDraft = {
+          ...prev,
+          [adultNavn]: {
+            ...(prev[adultNavn] || {
+              workshop1: "",
+              workshop2: "",
+              workshop3: "",
+              workshop4: "",
+            }),
+            [gap.slot]: gap.workshopName,
+          },
+        };
+        const gaps = listAdultEscortGaps(members, next, externalEscorts);
+        setEscortQueue(gaps);
+        return next;
+      });
+      setExternalEscorts((prev) => {
+        const child = prev[gap.childNavn];
+        if (!child?.[gap.slot]) return prev;
+        const { [gap.slot]: _removed, ...rest } = child;
+        const next = { ...prev };
+        if (Object.keys(rest).length === 0) delete next[gap.childNavn];
+        else next[gap.childNavn] = rest;
+        return next;
+      });
+    },
+    [members, externalEscorts]
+  );
+
+  const assignExternalAdultToGap = useCallback(
+    (gap: AdultEscortGap, voksenNavn: string) => {
+      const name = voksenNavn.trim();
+      if (!name) return;
+      setExternalEscorts((prev) => {
+        const next: ExternalEscortDraft = {
+          ...prev,
+          [gap.childNavn]: { ...(prev[gap.childNavn] || {}), [gap.slot]: name },
+        };
+        const gaps = listAdultEscortGaps(members, draft, next);
+        setEscortQueue(gaps);
+        return next;
+      });
+    },
     [members, draft]
   );
 
@@ -279,9 +377,25 @@ export default function WorkshopTilmeldingPage() {
         return;
       }
 
+      const minViolations = listWorkshopMinAgeViolations(members, draft);
+      if (minViolations.length > 0) {
+        const v = minViolations[0];
+        setError(
+          `${v.navn} kan ikke tilmeldes ${v.workshopName} (${SLOT_LABELS[v.slot]}): minimum ${v.minAge} år.`
+        );
+        return;
+      }
+
+      const escortGaps = listAdultEscortGaps(members, draft, externalEscorts);
+      if (escortGaps.length > 0) {
+        setEscortQueue(escortGaps);
+        return;
+      }
+
       setSubmitting(true);
       setError(null);
       setConflicts(null);
+      setEscortQueue([]);
       try {
         const res = await fetch("/api/workshop-register", {
           method: "POST",
@@ -299,6 +413,25 @@ export default function WorkshopTilmeldingPage() {
           setConflicts(data.conflicts as CapacityConflict[]);
           return;
         }
+        if (res.status === 409 && data.code === "WORKSHOP_MIN_AGE") {
+          const violations = data.violations as Array<{
+            navn: string;
+            workshopName: string;
+            minAge: number;
+            slot: MainWorkshopSlot;
+          }>;
+          const v = violations?.[0];
+          setError(
+            v
+              ? `${v.navn} kan ikke tilmeldes ${v.workshopName} (${SLOT_LABELS[v.slot]}): minimum ${v.minAge} år.`
+              : data.error || "Minimumsalder ikke opfyldt."
+          );
+          return;
+        }
+        if (res.status === 409 && data.code === "ADULT_ESCORT_REQUIRED") {
+          setEscortQueue(Array.isArray(data.gaps) ? data.gaps : []);
+          return;
+        }
         if (!res.ok) throw new Error(data.error || "Fejl ved workshop-tilmelding");
 
         goToApp(true);
@@ -309,7 +442,7 @@ export default function WorkshopTilmeldingPage() {
         setSubmitting(false);
       }
     },
-    [email, members, draft, membersPayload, goToApp, fetchOptions]
+    [email, members, draft, externalEscorts, membersPayload, goToApp, fetchOptions]
   );
 
   const acceptPartialForConflict = useCallback(
@@ -435,6 +568,9 @@ export default function WorkshopTilmeldingPage() {
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Vælg workshops</h1>
             <p className="mb-4 text-sm text-slate-600">
               Vælg én workshop i hvert hold for hver person. Fuldt bookede workshops kan ikke vælges.
+              Børn under {YOUNG_CHILD_AGE_MAX_EXCLUSIVE} år skal have en voksen ({ADULT_MIN_AGE}+) på
+              samme workshop — eller angive ledsager fra anden familie. Adventurerace: minimum 10 år
+              (yngre kan ikke vælges); under 15 år skal have voksen med.
             </p>
 
             {loading ? (
@@ -485,11 +621,22 @@ export default function WorkshopTilmeldingPage() {
                           >
                             <option value="">— Vælg —</option>
                             {(options[slot] || []).map((opt) => (
-                              <option key={opt.name} value={opt.name} disabled={opt.soldOut}>
-                                {optionLabel(opt)}
+                              <option
+                                key={opt.name}
+                                value={opt.name}
+                                disabled={opt.soldOut || isWorkshopBlockedForMember(member, opt.name)}
+                              >
+                                {optionLabel(opt, member)}
                               </option>
                             ))}
                           </select>
+                          {memberNeedsAdultOnWorkshop(member, draft[member.navn]?.[slot] || "") &&
+                            draft[member.navn]?.[slot] &&
+                            externalEscorts[member.navn]?.[slot] && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                ({`følges med ${externalEscorts[member.navn]![slot]} fra anden familie`})
+                              </p>
+                            )}
                         </label>
                       ))}
                     </div>
@@ -524,6 +671,17 @@ export default function WorkshopTilmeldingPage() {
             conflicts={conflicts}
             onAccept={acceptPartialForConflict}
             onDismiss={() => setConflicts(null)}
+          />
+        )}
+
+        {escortQueue.length > 0 && (
+          <AdultEscortDialog
+            gap={escortQueue[0]}
+            queueSize={escortQueue.length}
+            adults={adultsInFamily}
+            onAssignFamily={(adultNavn) => assignFamilyAdultToGap(escortQueue[0], adultNavn)}
+            onAssignExternal={(voksenNavn) => assignExternalAdultToGap(escortQueue[0], voksenNavn)}
+            onDismiss={() => setEscortQueue([])}
           />
         )}
       </div>
@@ -574,6 +732,139 @@ function FamilyMemberFields(props: {
         />
       </div>
     </>
+  );
+}
+
+function AdultEscortDialog({
+  gap,
+  queueSize,
+  adults,
+  onAssignFamily,
+  onAssignExternal,
+  onDismiss,
+}: {
+  gap: AdultEscortGap;
+  queueSize: number;
+  adults: FamilyMember[];
+  onAssignFamily: (adultNavn: string) => void;
+  onAssignExternal: (voksenNavn: string) => void;
+  onDismiss: () => void;
+}) {
+  const [mode, setMode] = useState<"choose" | "family" | "external">("choose");
+  const [selectedAdult, setSelectedAdult] = useState("");
+  const [externalName, setExternalName] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h2 className="mb-2 text-lg font-bold text-slate-800">Voksen skal med på workshop</h2>
+        <p className="mb-4 text-sm text-slate-600">
+          <strong>{gap.childNavn}</strong> (under {gap.adultRequiredBelowAge} år) er tilmeldt{" "}
+          <strong>{gap.workshopName}</strong> ({ESCORT_SLOT_LABELS[gap.slot]}). Det kræver en voksen
+          på samme workshop.
+          {queueSize > 1 && (
+            <span className="mt-2 block text-slate-500">({queueSize} mangler stadig løsning)</span>
+          )}
+        </p>
+
+        {mode === "choose" && (
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("family")}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white"
+            >
+              Vælg voksen fra jeres familie
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("external")}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              Følges med voksen fra anden familie
+            </button>
+            <button type="button" onClick={onDismiss} className="text-sm text-slate-500 hover:underline">
+              Gå tilbage og vælg andre workshops
+            </button>
+          </div>
+        )}
+
+        {mode === "family" && (
+          <div className="space-y-3">
+            {adults.length === 0 ? (
+              <p className="text-sm text-amber-800">
+                I har ingen voksne (18+) i familien. Tilføj en voksen under Familie, eller vælg
+                ledsager fra anden familie.
+              </p>
+            ) : (
+              <>
+                <label className="block text-sm font-medium text-slate-700">
+                  Hvilken voksen tilmeldes <strong>{gap.workshopName}</strong>?
+                </label>
+                <select
+                  value={selectedAdult}
+                  onChange={(e) => setSelectedAdult(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  <option value="">— Vælg voksen —</option>
+                  {adults.map((a) => (
+                    <option key={a.navn} value={a.navn}>
+                      {a.navn}
+                      {a.alder != null ? ` (${a.alder} år)` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!selectedAdult}
+                  onClick={() => onAssignFamily(selectedAdult)}
+                  className="w-full rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Tilmeld voksen på samme workshop
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setMode("choose")}
+              className="text-sm text-slate-500 hover:underline"
+            >
+              Tilbage
+            </button>
+          </div>
+        )}
+
+        {mode === "external" && (
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-slate-700">
+              Navn på voksen fra anden familie
+            </label>
+            <input
+              type="text"
+              value={externalName}
+              onChange={(e) => setExternalName(e.target.value)}
+              placeholder="Fx Morten"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+            />
+            <button
+              type="button"
+              disabled={!externalName.trim()}
+              onClick={() => onAssignExternal(externalName)}
+              className="w-full rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              Gem ledsager
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("choose")}
+              className="text-sm text-slate-500 hover:underline"
+            >
+              Tilbage
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

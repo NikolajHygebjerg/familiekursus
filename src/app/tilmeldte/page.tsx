@@ -11,8 +11,27 @@ interface FamilyMember {
   workshop3: string | null;
   workshop4: string | null;
   voksen: string | null;
+  ledsager1?: string | null;
+  ledsager2?: string | null;
+  ledsager3?: string | null;
+  ledsager4?: string | null;
   aftengrupper: string | null;
   bornegrupper: string | null;
+}
+
+const LEDSAGER_BY_WORKSHOP_SLOT: Record<
+  "workshop1" | "workshop2" | "workshop3" | "workshop4",
+  keyof Pick<FamilyMember, "ledsager1" | "ledsager2" | "ledsager3" | "ledsager4">
+> = {
+  workshop1: "ledsager1",
+  workshop2: "ledsager2",
+  workshop3: "ledsager3",
+  workshop4: "ledsager4",
+};
+
+function participantDisplayName(member: FamilyMember, slot: keyof typeof LEDSAGER_BY_WORKSHOP_SLOT): string {
+  const escort = member[LEDSAGER_BY_WORKSHOP_SLOT[slot]]?.trim();
+  return escort ? `${member.navn} (${escort})` : member.navn;
 }
 
 interface AdminAssignedWorkshop {
@@ -147,7 +166,11 @@ export default function TilmeldtePage() {
         const workshopName = member[slot];
         if (workshopName) {
           const list = grouped.get(workshopName) || [];
-          list.push(member.navn);
+          const label =
+            slot === "voksen"
+              ? member.navn
+              : participantDisplayName(member, slot);
+          list.push(label);
           grouped.set(workshopName, list);
         }
       }
@@ -339,12 +362,19 @@ export default function TilmeldtePage() {
                         (key) => {
                           const value = member[key];
                           if (!value) return null;
+                          const escort =
+                            key !== "voksen" ? member[LEDSAGER_BY_WORKSHOP_SLOT[key]]?.trim() : null;
                           return (
                             <div key={key} className="flex gap-2 text-sm">
                               <dt className="w-28 shrink-0 text-slate-500">
                                 {WORKSHOP_LABELS[key]}:
                               </dt>
-                              <dd className="text-slate-800">{value}</dd>
+                              <dd className="text-slate-800">
+                                {value}
+                                {escort && (
+                                  <span className="mt-0.5 block text-xs text-slate-500">{escort}</span>
+                                )}
+                              </dd>
                             </div>
                           );
                         }
