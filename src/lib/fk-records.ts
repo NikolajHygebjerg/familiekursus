@@ -94,11 +94,13 @@ export async function fetchFkRecords(tableIdOrName: string): Promise<FkRecord[]>
   let from = 0;
 
   while (true) {
+    // Uden .order(): PostgREST + range kan returnere tom batch på nogle hosts (Vercel).
     const { data, error } = await supabase
       .from("fk_records")
       .select("id, fields")
       .eq("table_key", tableKey)
-      .order("id")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
 
     if (error) {
