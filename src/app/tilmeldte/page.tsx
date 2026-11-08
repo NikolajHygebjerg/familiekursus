@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
+import { familyDisplayName } from "@/lib/family-display";
 
 interface FamilyMember {
   navn: string;
@@ -70,7 +71,7 @@ export default function TilmeldtePage() {
   const [myWorkshopsLoading, setMyWorkshopsLoading] = useState(false);
   const [bornegruppeOverview, setBornegruppeOverview] = useState<BornegruppeOverviewBlock[]>([]);
 
-  const displayFamily = selectedFamily;
+  const familyLabel = familyDisplayName(email, familyName, isKursusleder);
   /** Brugernavn / familie til API (fx login «Hygge»). */
   const familyLogin =
     !isKursusleder && (email?.trim() || familyName?.trim())
@@ -285,7 +286,9 @@ export default function TilmeldtePage() {
               ? adminNavn
                 ? `Workshops hvor ${adminNavn} er underviser eller hjælper.`
                 : "Tilføj dit navn under «Navne» i Brugere-tabellen for at se dine workshops."
-              : `Workshop-tilmeldinger for ${displayFamily || "din familie"}.`}
+              : familyLabel
+                ? `Workshop-tilmeldinger for ${familyLabel}.`
+                : "Her ser du familiens workshop-tilmeldinger."}
           </p>
         </header>
 
@@ -402,7 +405,7 @@ export default function TilmeldtePage() {
           </div>
         )}
 
-        {!loadingMembers && displayFamily && members.length > 0 && (
+        {!loadingMembers && familyLabel && members.length > 0 && (
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="rounded-xl bg-white p-6 shadow-lg">
               <h2 className="mb-6 text-xl font-semibold text-slate-800">

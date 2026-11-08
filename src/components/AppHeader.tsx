@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { familyDisplayName } from "@/lib/family-display";
 
 /** Fast topbjælke med log ud — bruges på alle indloggede skærme. */
 export default function AppHeader() {
@@ -11,10 +12,10 @@ export default function AppHeader() {
 
   if (!isAuthReady || !email) return null;
 
-  const displayName = isAdmin ? "Kursusleder" : familyName || email;
+  const displayName = familyDisplayName(email, familyName, isAdmin) ?? (isAdmin ? "Kursusleder" : "Familie");
 
   return (
-    <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
+    <header className="app-safe-x app-safe-top sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white py-2">
       <div className="flex min-w-0 items-center gap-2">
         <Image
           src="/images/logo.jpg"

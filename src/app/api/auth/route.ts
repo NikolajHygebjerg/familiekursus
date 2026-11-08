@@ -14,6 +14,7 @@ import {
   getAppSuperAdminBootstrapCode,
   isAppSuperAdmin,
 } from "@/lib/super-admin";
+import { isEmailLike } from "@/lib/family-display";
 import { getKursusYear } from "@/lib/kursus-year";
 import { getSupabaseConfigError, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
@@ -36,7 +37,20 @@ function parseLogin(raw: string | undefined): string | null {
 async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: string | null = null) {
   const effectiveAdmin = isAdmin || isAppSuperAdmin(login);
   const inYearTable = await loginExistsInYearTable(login);
-  const familyName = effectiveAdmin ? null : inYearTable ? await getFamilyByLogin(login) : login;
+  let familyName: string | null = effectiveAdmin
+    ? null
+    : inYearTable
+      ? await getFamilyByLogin(login)
+      : login;
+  if (!effectiveAdmin && familyName && isEmailLike(familyName)) {
+    const loginNorm = normalizeLoginName(login).toLowerCase();
+    if (normalizeLoginName(familyName).toLowerCase() !== loginNorm) {
+      familyName = login;
+    }
+  }
+  if (!effectiveAdmin && !familyName) {
+    familyName = login;
+  }
   const needsReg = effectiveAdmin
     ? false
     : !(await hasWorkshopRegistration(login, getKursusYear()));

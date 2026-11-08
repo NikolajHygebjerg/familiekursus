@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { familyDisplayName } from "@/lib/family-display";
 
 const KURSUSLEDER = "Kursusleder";
 
@@ -23,7 +24,7 @@ const FamilyContext = createContext<FamilyContextType | null>(null);
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const { email, familyName, isAdmin, logout } = useAuth();
 
-  const selectedFamily = email ? (isAdmin ? KURSUSLEDER : familyName || email) : null;
+  const selectedFamily = email ? familyDisplayName(email, familyName, isAdmin) : null;
   const isKursusleder = isAdmin;
 
   const setSelectedFamily = useCallback(() => {

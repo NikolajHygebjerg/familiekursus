@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { markPostRegistrationWelcome } from "@/lib/post-registration-welcome";
 import { DEFAULT_KURSUS_YEAR } from "@/lib/kursus-year";
 import type { WorkshopSlotKey } from "@/lib/airtable";
 import {
@@ -123,9 +124,14 @@ export default function WorkshopTilmeldingPage() {
   soloWithoutAdultRef.current = soloWithoutAdult;
 
   const goToApp = useCallback(
-    async (options?: { syncAuth?: boolean; registrationComplete?: boolean }) => {
+    async (options?: {
+      syncAuth?: boolean;
+      registrationComplete?: boolean;
+      showPostRegistrationWelcome?: boolean;
+    }) => {
       const syncAuth = options?.syncAuth ?? true;
       const registrationComplete = options?.registrationComplete ?? false;
+      const showPostRegistrationWelcome = options?.showPostRegistrationWelcome ?? false;
 
       if (!email) {
         router.replace("/velkommen");
@@ -134,6 +140,11 @@ export default function WorkshopTilmeldingPage() {
 
       if (registrationComplete) {
         setAuth(email, familyName ?? email, false, isAdmin, adminNavn);
+        if (showPostRegistrationWelcome) {
+          markPostRegistrationWelcome();
+          router.replace("/velkommen-til-app");
+          return;
+        }
       } else if (syncAuth) {
         try {
           const res = await fetch("/api/auth", {
@@ -744,7 +755,11 @@ export default function WorkshopTilmeldingPage() {
           return;
         }
 
-        await goToApp({ registrationComplete: true, syncAuth: true });
+        await goToApp({
+          registrationComplete: true,
+          syncAuth: true,
+          showPostRegistrationWelcome: true,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl");
       } finally {

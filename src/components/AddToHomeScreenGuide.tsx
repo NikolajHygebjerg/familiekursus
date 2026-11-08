@@ -67,7 +67,16 @@ function getSteps(platform: Platform, browser: Browser): string[] {
   return [];
 }
 
-export default function AddToHomeScreenGuide() {
+type AddToHomeScreenGuideProps = {
+  className?: string;
+  /** Efter workshop-tilmelding: vis selv om brugeren tidligere har lukket guiden. */
+  ignoreDismiss?: boolean;
+};
+
+export default function AddToHomeScreenGuide({
+  className,
+  ignoreDismiss = false,
+}: AddToHomeScreenGuideProps) {
   const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [platform, setPlatform] = useState<Platform>("other");
@@ -82,17 +91,23 @@ export default function AddToHomeScreenGuide() {
   }, []);
 
   const shouldShow = useMemo(() => {
-    if (!ready || dismissed) return false;
+    if (!ready) return false;
+    if (!ignoreDismiss && dismissed) return false;
     if (isStandaloneMode()) return false;
     return platform === "ios" || platform === "android";
-  }, [ready, dismissed, platform]);
+  }, [ready, dismissed, ignoreDismiss, platform]);
 
   const steps = useMemo(() => getSteps(platform, browser), [platform, browser]);
 
   if (!shouldShow || steps.length === 0) return null;
 
   return (
-    <section className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700">
+    <section
+      className={
+        className ??
+        "mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700"
+      }
+    >
       <div className="mb-2 flex items-start justify-between gap-3">
         <p className="font-semibold text-slate-800">Gem appen på hjemmeskærmen</p>
         <button
