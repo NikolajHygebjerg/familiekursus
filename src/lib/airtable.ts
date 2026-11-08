@@ -721,15 +721,20 @@ export async function hasFamilyRoster(login: string, year: number): Promise<bool
 
 export async function hasWorkshopRegistration(login: string, year: number): Promise<boolean> {
   if (!(await hasFamilyRoster(login, year))) return false;
-  const members = await getFamilyMembersByLogin(login);
-  if (members.length === 0) return false;
-  return members.every(
-    (m) =>
-      Boolean(m.workshop1?.trim()) &&
-      Boolean(m.workshop2?.trim()) &&
-      Boolean(m.workshop3?.trim()) &&
-      Boolean(m.workshop4?.trim())
-  );
+  const records = await fetchAllRecords();
+  let memberCount = 0;
+  for (const record of records) {
+    if (!loginMatchesRecord(record, login)) continue;
+    const navn = getFieldValue(record, NAVN_FIELDS);
+    if (!navn?.trim()) continue;
+    memberCount += 1;
+    const w1 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1);
+    const w2 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2);
+    const w3 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3);
+    const w4 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4);
+    if (!w1?.trim() || !w2?.trim() || !w3?.trim() || !w4?.trim()) return false;
+  }
+  return memberCount > 0;
 }
 
 export async function getParticipantRecordIdsByLogin(

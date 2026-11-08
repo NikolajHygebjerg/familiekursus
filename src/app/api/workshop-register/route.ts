@@ -4,6 +4,7 @@ import {
   getParticipantRecordIdsByLogin,
   getYearTableId,
   hasWorkshopRegistration,
+  normalizeLoginName,
   updateAirtableRecord,
   WORKSHOP_FIELDS,
   type WorkshopSlotKey,
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
 
     const year = getKursusYear();
     const tableId = getYearTableId(year);
-    const login = email;
+    const login = normalizeLoginName(email);
 
     if (mode === "workshops") {
       const alreadyRegistered = await hasWorkshopRegistration(login, year);

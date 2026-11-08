@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_KURSUS_YEAR } from "@/lib/kursus-year";
@@ -88,6 +88,9 @@ export default function WorkshopTilmeldingPage() {
     [email, familyName, setAuth, router]
   );
 
+  const goToAppRef = useRef(goToApp);
+  goToAppRef.current = goToApp;
+
   const syncDraftFromMembers = useCallback((mems: FamilyMember[]) => {
     const next: WorkshopDraft = {};
     for (const m of mems) {
@@ -101,31 +104,45 @@ export default function WorkshopTilmeldingPage() {
     setDraft(next);
   }, []);
 
-  const fetchMembers = useCallback(() => {
-    if (!email) return Promise.resolve();
-    return fetch(`/api/families/email?email=${encodeURIComponent(email)}`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: FamilyMember[]) => {
-        const list = Array.isArray(data) ? data : [];
-        setMembers(list);
-        syncDraftFromMembers(list);
-        const hasRoster = list.length > 0;
-        const workshopsDone =
-          hasRoster &&
-          list.every(
-            (m) => m.workshop1 && m.workshop2 && m.workshop3 && m.workshop4
-          );
-        const workshopsStarted = list.some(
-          (m) => m.workshop1 || m.workshop2 || m.workshop3 || m.workshop4
+  const applyMembersList = useCallback(
+    (list: FamilyMember[]) => {
+      setMembers(list);
+      syncDraftFromMembers(list);
+      const hasRoster = list.length > 0;
+      const workshopsDone =
+        hasRoster &&
+        list.every((m) => m.workshop1 && m.workshop2 && m.workshop3 && m.workshop4);
+      const workshopsStarted = list.some(
+        (m) => m.workshop1 || m.workshop2 || m.workshop3 || m.workshop4
+      );
+      if (workshopsDone) {
+        goToAppRef.current(true);
+        return;
+      }
+      if (hasRoster && workshopsStarted) setStep("workshops");
+    },
+    [syncDraftFromMembers]
+  );
+
+  const fetchMembers = useCallback(async (): Promise<FamilyMember[]> => {
+    if (!email) return [];
+    try {
+      const res = await fetch(`/api/families/email?email=${encodeURIComponent(email)}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof body?.error === "string" ? body.error : "Kunne ikke hente familiemedlemmer"
         );
-        if (workshopsDone) {
-          goToApp(true);
-          return;
-        }
-        if (hasRoster && workshopsStarted) setStep("workshops");
-      })
-      .catch(() => setMembers([]));
-  }, [email, syncDraftFromMembers, goToApp]);
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? (data as FamilyMember[]) : [];
+      applyMembersList(list);
+      return list;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke hente familiemedlemmer");
+      return [];
+    }
+  }, [email, applyMembersList]);
 
   const fetchOptions = useCallback(() => {
     return fetch(`/api/workshop-options?year=${DEFAULT_KURSUS_YEAR}&detailed=1`)
@@ -160,10 +177,18 @@ export default function WorkshopTilmeldingPage() {
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router, goToApp]);
 
   useEffect(() => {
-    if (!email || isAdmin) return;
+    if (!isAuthReady || !email || isAdmin) return;
     setLoading(true);
     Promise.all([fetchMembers(), fetchOptions()]).finally(() => setLoading(false));
-  }, [email, isAdmin, fetchMembers, fetchOptions]);
+  }, [isAuthReady, email, isAdmin, fetchMembers, fetchOptions]);
+
+  useEffect(() => {
+    if (step !== "workshops" || loading) return;
+    if (members.length === 0) {
+      setStep("family");
+      setError((prev) => prev ?? "Tilføj familiemedlemmer under Familie, før I vælger workshops.");
+    }
+  }, [step, loading, members.length]);
 
   const resetFamilyForm = useCallback(() => {
     setFornavn("");
@@ -174,7 +199,12 @@ export default function WorkshopTilmeldingPage() {
   const submitFamily = useCallback(
     async (continueToWorkshops: boolean) => {
       if (!email) return;
-      if (continueToWorkshops && !fornavn.trim() && !alder.trim() && members.length > 0) {
+      if (continueToWorkshops && !fornavn.trim() && !alder.trim()) {
+        const list = await fetchMembers();
+        if (list.length === 0) {
+          setError("Tilføj mindst én person i familien, før I vælger workshops.");
+          return;
+        }
         setStep("workshops");
         await fetchOptions();
         return;
@@ -199,9 +229,13 @@ export default function WorkshopTilmeldingPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Fejl ved tilmelding");
 
-        await fetchMembers();
+        const list = await fetchMembers();
         resetFamilyForm();
         if (continueToWorkshops) {
+          if (list.length === 0) {
+            setError("Kunne ikke gemme familiemedlem — prøv igen.");
+            return;
+          }
           setStep("workshops");
           await fetchOptions();
         }
@@ -359,6 +393,10 @@ export default function WorkshopTilmeldingPage() {
 
             {loading ? (
               <p className="text-slate-500">Henter workshops...</p>
+            ) : members.length === 0 ? (
+              <p className="text-slate-600">
+                Ingen familiemedlemmer fundet. Gå tilbage til fanen Familie og tilføj dem først.
+              </p>
             ) : (
               <div className="space-y-6">
                 {members.map((member) => (

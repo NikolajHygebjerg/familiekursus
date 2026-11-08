@@ -1,4 +1,4 @@
-import { getFamilyMembersByEmail } from "@/lib/airtable";
+import { getFamilyMembersByEmail, normalizeLoginName } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     if (!email?.trim()) {
       return NextResponse.json({ error: "Email mangler" }, { status: 400 });
     }
-    const members = await getFamilyMembersByEmail(email.trim());
+    const members = await getFamilyMembersByEmail(normalizeLoginName(email));
     return NextResponse.json(members);
   } catch (error) {
     console.error("Families by email API fejl:", error);
