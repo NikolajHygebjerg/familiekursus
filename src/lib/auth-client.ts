@@ -1,6 +1,3 @@
-export const LOGIN_HISTORY_KEY = "familiekursus_login_history";
-export const MAX_HISTORY = 12;
-
 export type AuthResult = {
   email: string;
   familyName: string | null;
@@ -15,23 +12,15 @@ export function postLoginPath(data: AuthResult): string {
   return "/tilmeldte";
 }
 
-export function readLoginHistory(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw =
-      localStorage.getItem(LOGIN_HISTORY_KEY) ||
-      localStorage.getItem("familiekursus_login_email_history");
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
-}
+const LEGACY_LOGIN_HISTORY_KEYS = [
+  "familiekursus_login_history",
+  "familiekursus_login_email_history",
+] as const;
 
-export function pushLoginHistory(prev: string[], login: string): string[] {
-  const value = login.trim();
-  if (!value) return prev;
-  const next = [value, ...prev.filter((x) => x !== value)].slice(0, MAX_HISTORY);
-  localStorage.setItem(LOGIN_HISTORY_KEY, JSON.stringify(next));
-  return next;
+/** Fjern gamle gemte brugernavne fra localStorage. */
+export function clearLegacyLoginHistory(): void {
+  if (typeof window === "undefined") return;
+  for (const key of LEGACY_LOGIN_HISTORY_KEYS) {
+    localStorage.removeItem(key);
+  }
 }

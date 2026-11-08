@@ -5,12 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import AuthBranding from "@/components/AuthBranding";
-import {
-  AuthResult,
-  postLoginPath,
-  pushLoginHistory,
-  readLoginHistory,
-} from "@/lib/auth-client";
+import { AuthResult, clearLegacyLoginHistory, postLoginPath } from "@/lib/auth-client";
 
 type Step = "login" | "glemtKode";
 
@@ -23,11 +18,8 @@ export default function LogIndPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [loginHistory, setLoginHistory] = useState<string[]>(() => readLoginHistory());
-  const [showLoginSuggestions, setShowLoginSuggestions] = useState(false);
-
-  const rememberLogin = useCallback((value: string) => {
-    setLoginHistory((prev) => pushLoginHistory(prev, value));
+  useEffect(() => {
+    clearLegacyLoginHistory();
   }, []);
 
   useEffect(() => {
@@ -36,14 +28,6 @@ export default function LogIndPage() {
       !isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : isAdmin ? "/" : "/tilmeldte"
     );
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
-
-  const loginSuggestions = Array.from(
-    new Set(
-      loginHistory.filter((h) =>
-        h.toLowerCase().includes(brugernavnInput.trim().toLowerCase())
-      )
-    )
-  ).slice(0, 12);
 
   const applyAuthAndRedirect = useCallback(
     (data: AuthResult) => {
@@ -54,10 +38,9 @@ export default function LogIndPage() {
         Boolean(data.isAdmin),
         data.adminNavn ?? null
       );
-      rememberLogin(data.email);
       router.replace(postLoginPath(data));
     },
-    [rememberLogin, router, setAuth]
+    [router, setAuth]
   );
 
   const handleLogin = useCallback(async () => {
@@ -143,41 +126,18 @@ export default function LogIndPage() {
             <label htmlFor="brugernavn" className="mb-1 block text-sm font-medium text-slate-700">
               Brugernavn
             </label>
-            <div className="relative">
-              <input
-                id="brugernavn"
-                type="text"
-                value={brugernavnInput}
-                onChange={(e) => {
-                  setBrugernavnInput(e.target.value);
-                  setShowLoginSuggestions(true);
-                }}
-                onFocus={() => setShowLoginSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowLoginSuggestions(false), 150)}
-                placeholder="Jeres brugernavn"
-                className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                autoFocus
-                autoComplete="username"
-              />
-              {showLoginSuggestions && loginSuggestions.length > 0 && (
-                <ul className="absolute z-10 mt-[-12px] max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                  {loginSuggestions.map((suggestion) => (
-                    <li key={suggestion}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBrugernavnInput(suggestion);
-                          setShowLoginSuggestions(false);
-                        }}
-                        className="w-full px-4 py-2 text-left text-slate-800 hover:bg-amber-50"
-                      >
-                        {suggestion}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <input
+              id="brugernavn"
+              type="text"
+              value={brugernavnInput}
+              onChange={(e) => setBrugernavnInput(e.target.value)}
+              placeholder="Jeres brugernavn"
+              className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
 
             <label htmlFor="kode" className="mb-1 block text-sm font-medium text-slate-700">
               Kode
