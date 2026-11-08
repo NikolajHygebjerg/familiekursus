@@ -16,6 +16,9 @@ export type WorkshopChoiceDraft = Record<string, Partial<Record<EscortWorkshopSl
 /** Ekstern ledsager (anden familie), per barn og workshop-slot. */
 export type ExternalEscortDraft = Record<string, Partial<Record<EscortWorkshopSlot, string>>>;
 
+/** Barn deltager uden voksen på slot (kun når alder/workshop tillader det). */
+export type SoloWithoutAdultDraft = Record<string, Partial<Record<EscortWorkshopSlot, boolean>>>;
+
 export interface AdultEscortGap {
   childNavn: string;
   slot: EscortWorkshopSlot;
@@ -95,6 +98,21 @@ export function memberNeedsAdultOnWorkshop(
   return member.alder < YOUNG_CHILD_AGE_MAX_EXCLUSIVE;
 }
 
+/** Om barnet må krydse «Deltager uden voksen» for den valgte workshop. */
+export function childCanAttendWorkshopWithoutAdult(
+  member: RosterMember,
+  workshopDisplayName: string
+): boolean {
+  if (memberIsAdult(member) || member.alder == null) return false;
+  const name = workshopDisplayName.trim();
+  if (!name) return false;
+  const rule = getWorkshopAgeRule(name);
+  if (rule?.adultRequiredBelowAge != null) {
+    return member.alder >= rule.adultRequiredBelowAge;
+  }
+  return member.alder >= YOUNG_CHILD_AGE_MAX_EXCLUSIVE;
+}
+
 export function adultRequiredBelowAgeForWorkshop(workshopDisplayName: string): number {
   const rule = getWorkshopAgeRule(workshopDisplayName);
   if (rule?.adultRequiredBelowAge != null) return rule.adultRequiredBelowAge;
@@ -159,10 +177,25 @@ export function mergeRosterWithClientMembers<T extends RosterMember>(
   });
 }
 
+export function findFamilyAdultOnChildSlot(
+  adults: RosterMember[],
+  workshopDraft: WorkshopChoiceDraft,
+  slot: EscortWorkshopSlot,
+  workshopDisplayName: string
+): string | null {
+  const target = normalizeWorkshopName(workshopDisplayName);
+  for (const adult of adults) {
+    const choice = workshopDraft[adult.navn]?.[slot]?.trim();
+    if (choice && normalizeWorkshopName(choice) === target) return adult.navn;
+  }
+  return null;
+}
+
 export function listAdultEscortGaps(
   members: RosterMember[],
   workshopDraft: WorkshopChoiceDraft,
-  externalEscorts: ExternalEscortDraft
+  externalEscorts: ExternalEscortDraft,
+  soloWithoutAdult: SoloWithoutAdultDraft = {}
 ): AdultEscortGap[] {
   const adults = members.filter(memberIsAdult);
   const gaps: AdultEscortGap[] = [];
@@ -176,6 +209,7 @@ export function listAdultEscortGaps(
       const workshopName = choices[slot]?.trim();
       if (!workshopName) continue;
       if (!memberNeedsAdultOnWorkshop(member, workshopName)) continue;
+      if (soloWithoutAdult[member.navn]?.[slot]) continue;
 
       const external = externalEscorts[member.navn]?.[slot]?.trim();
       if (external) continue;
