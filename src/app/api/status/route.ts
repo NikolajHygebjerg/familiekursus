@@ -4,12 +4,36 @@ import { coerceFkFields, fetchFkRecords } from "@/lib/fk-records";
 import {
   createAdminClient,
   getSupabaseProjectRef,
+  getSupabasePublicHost,
   isSupabaseConfigured,
 } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+async function countFkRecordsByTableKey(): Promise<Record<string, number>> {
+  const supabase = createAdminClient();
+  const counts: Record<string, number> = {};
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from("fk_records")
+      .select("table_key")
+      .range(from, from + pageSize - 1);
+    if (error) break;
+    const batch = data ?? [];
+    for (const row of batch) {
+      const key = String(row.table_key ?? "");
+      if (!key) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+  return counts;
+}
 
 /** Offentlig sundhedstjek — ingen hemmeligheder (hjælper med at afstemme Vercel-env). */
 export async function GET(request: Request) {
@@ -78,12 +102,34 @@ export async function GET(request: Request) {
     }
   }
 
+  let tableKeyCounts: Record<string, number> = {};
+  try {
+    tableKeyCounts = await countFkRecordsByTableKey();
+  } catch {
+    tableKeyCounts = {};
+  }
+  const fkRecordsTotal = Object.values(tableKeyCounts).reduce((a, b) => a + b, 0);
+  const year = getKursusYear();
+  const participantsTableKey = `participants_${year}`;
+  const deployRef = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null;
+
   return NextResponse.json({
     ok: true,
-    kursusYear: getKursusYear(),
+    kursusYear: year,
     supabaseConfigured: isSupabaseConfigured(),
     supabaseProjectRef: getSupabaseProjectRef(),
     participants2027RowCount,
+    dataSource: {
+      host: getSupabasePublicHost(),
+      projectRef: getSupabaseProjectRef(),
+      kursusYear: year,
+      participantsTableKey,
+      tableKeyCounts,
+      fkRecordsTotal,
+      checkedAt: new Date().toISOString(),
+      vercelEnv: process.env.VERCEL_ENV ?? null,
+      deployRef,
+    },
     ...(fieldsDebug ? { fieldsDebug } : {}),
     ...(login.length > 0 ? { login, rosterMemberCount: rosterCount } : {}),
   });

@@ -79,3 +79,14 @@ export function getSupabaseProjectRef(): string | null {
     return null;
   }
 }
+
+/** Offentlig vært (fx zngchdmlxefxvdayiwbu.supabase.co) — ingen hemmeligheder. */
+export function getSupabasePublicHost(): string | null {
+  const url = resolveSupabaseUrl();
+  if (!url) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}

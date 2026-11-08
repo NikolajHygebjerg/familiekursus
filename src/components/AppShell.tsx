@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import BottomNav from "./BottomNav";
 import AddToHomeScreenGuide from "./AddToHomeScreenGuide";
+import SupabaseSourceInfo from "./SupabaseSourceInfo";
 
 const PUBLIC_PATHS = ["/login", "/workshop-tilmelding"];
 
@@ -31,7 +32,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [isAuthReady, isPublic, email, isAdmin, needsWorkshopRegistration, router, pathname]);
 
   if (isPublic) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <SupabaseSourceInfo />
+      </>
+    );
   }
 
   if (!isAuthReady) {
@@ -73,6 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <AddToHomeScreenGuide />
       <div className="pb-20">{children}</div>
+      <SupabaseSourceInfo />
       <BottomNav />
     </>
   );
