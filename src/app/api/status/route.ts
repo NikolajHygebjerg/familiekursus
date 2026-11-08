@@ -1,6 +1,6 @@
 import { getFamilyMembersByLogin, normalizeLoginName } from "@/lib/airtable";
 import { getKursusYear } from "@/lib/kursus-year";
-import { isSupabaseConfigured } from "@/lib/supabase/admin";
+import { getSupabaseProjectRef, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
     ok: true,
     kursusYear: getKursusYear(),
     supabaseConfigured: isSupabaseConfigured(),
+    supabaseProjectRef: getSupabaseProjectRef(),
     ...(login.length > 0 ? { login, rosterMemberCount: rosterCount } : {}),
   });
 }

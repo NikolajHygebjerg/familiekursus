@@ -66,3 +66,16 @@ export function createAdminClient() {
 export function isSupabaseConfigured(): boolean {
   return getSupabaseConfigError() === null;
 }
+
+/** Projektreference fra URL (fx zngchdmlxefxvdayiwbu) — til at afstemme Vercel vs lokal .env. */
+export function getSupabaseProjectRef(): string | null {
+  const url = resolveSupabaseUrl();
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname;
+    const ref = host.split(".")[0];
+    return ref || null;
+  } catch {
+    return null;
+  }
+}
