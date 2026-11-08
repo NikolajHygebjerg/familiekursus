@@ -21,9 +21,9 @@ interface FamilyContextType {
 const FamilyContext = createContext<FamilyContextType | null>(null);
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
-  const { email, isAdmin, logout } = useAuth();
+  const { email, familyName, isAdmin, logout } = useAuth();
 
-  const selectedFamily = email ? (isAdmin ? KURSUSLEDER : email) : null;
+  const selectedFamily = email ? (isAdmin ? KURSUSLEDER : familyName || email) : null;
   const isKursusleder = isAdmin;
 
   const setSelectedFamily = useCallback(() => {

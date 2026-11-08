@@ -12,7 +12,7 @@ const PUBLIC_PATHS = ["/login", "/workshop-tilmelding"];
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { email, needsWorkshopRegistration, logout, isAuthReady, isAdmin } = useAuth();
+  const { email, familyName, needsWorkshopRegistration, logout, isAuthReady, isAdmin } = useAuth();
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  const displayName = email || "";
+  const displayName = familyName || email || "";
 
   return (
     <>

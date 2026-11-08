@@ -1,5 +1,4 @@
-import { get } from "@vercel/blob";
-import { blobStoreOptions } from "@/lib/blob-config";
+import { downloadMoedOsImage } from "@/lib/moed-os-storage";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +15,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Adgang nægtet" }, { status: 403 });
     }
 
-    const result = await get(pathname, { access: "private", ...blobStoreOptions() });
-    if (!result || result.statusCode !== 200 || !result.stream) {
+    const result = await downloadMoedOsImage(pathname);
+    if (!result) {
       return new NextResponse("Ikke fundet", { status: 404 });
     }
 
-    return new NextResponse(result.stream, {
+    return new NextResponse(result.data, {
       headers: {
-        "Content-Type": result.blob.contentType || "image/jpeg",
+        "Content-Type": result.contentType,
         "Cache-Control": "public, max-age=86400",
         "X-Content-Type-Options": "nosniff",
       },

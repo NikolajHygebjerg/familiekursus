@@ -1,6 +1,6 @@
-import { put } from "@vercel/blob";
 import { getBrugerByEmail, getMoedOsAirtableState, upsertMoedOsAirtableRecord } from "@/lib/airtable";
-import { isBlobUploadConfigured, moedOsImageProxyUrl, blobStoreOptions } from "@/lib/blob-config";
+import { isBlobUploadConfigured, moedOsImageProxyUrl } from "@/lib/blob-config";
+import { uploadMoedOsImage } from "@/lib/moed-os-storage";
 import {
   canAdminEditMoedOsPerson,
   getStaticMoedOsSlugs,
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Billede-upload er ikke konfigureret endnu. Forbind Blob under Vercel → Storage.",
+            "Billede-upload er ikke konfigureret endnu. Tilføj Supabase-nøgler (SUPABASE_URL og SUPABASE_SERVICE_ROLE_KEY).",
         },
         { status: 503 }
       );
@@ -66,22 +66,18 @@ export async function POST(request: Request) {
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const pathname = `moed-os/${slug}-${Date.now()}.${ext}`;
-    const blob = await put(pathname, file, {
-      access: "private",
-      ...blobStoreOptions(),
-    });
-
-    const imageUrl = `${moedOsImageProxyUrl(blob.pathname)}&v=${Date.now()}`;
+    await uploadMoedOsImage(pathname, file, file.type);
+    const imageUrl = `${moedOsImageProxyUrl(pathname)}&v=${Date.now()}`;
 
     await upsertMoedOsAirtableRecord(slug, {
       name: person.name,
       imageUrl,
-      blobPathname: blob.pathname,
+      blobPathname: pathname,
       linkedEmail: person.linkedEmail,
       hidden: false,
     });
 
-    return NextResponse.json({ ok: true, imageUrl, pathname: blob.pathname });
+    return NextResponse.json({ ok: true, imageUrl, pathname });
   } catch (error) {
     console.error("Mød os upload fejl:", error);
     return NextResponse.json(

@@ -1,36 +1,40 @@
 import {
-  getFamilyByEmail,
-  getBrugerByEmail,
-  emailExistsIn2026,
+  getFamilyByLogin,
+  getBrugerByLogin,
+  loginExistsInYearTable,
   hasWorkshopRegistration,
   createAirtableRecord,
   updateAirtableRecord,
+  normalizeLoginName,
 } from "@/lib/airtable";
+import { getKursusYear } from "@/lib/kursus-year";
 import { NextResponse } from "next/server";
 
 const TABLE_BRUGERE = "Brugere";
-const BRUGERE_EMAIL_FIELDS = ["Email", "email", "A Email"];
-const BRUGERE_KODE_FIELDS = ["Kode", "A Kode", "kode", "Code", "code"];
-const BRUGERE_STATUS_FIELD = "Brugerstatus";
-
-function getYear(): number {
-  return new Date().getFullYear();
-}
+const BRUGERE_LOGIN_FIELDS = {
+  email: "Email",
+  brugernavn: "Brugernavn",
+  kode: "Kode",
+  status: "Brugerstatus",
+};
 
 export const dynamic = "force-dynamic";
 
-async function buildAuthResponse(email: string, isAdmin: boolean, adminNavn: string | null = null) {
-  const existsIn2026 = await emailExistsIn2026(email);
-  const familyName = isAdmin ? null : existsIn2026 ? await getFamilyByEmail(email) : null;
+function parseLogin(raw: string | undefined): string | null {
+  const login = normalizeLoginName(raw ?? "");
+  return login.length > 0 ? login : null;
+}
+
+async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: string | null = null) {
+  const inYearTable = await loginExistsInYearTable(login);
+  const familyName = isAdmin ? null : inYearTable ? await getFamilyByLogin(login) : login;
   const needsReg = isAdmin
     ? false
-    : existsIn2026
-      ? !(await hasWorkshopRegistration(email, getYear()))
-      : true;
+    : !(await hasWorkshopRegistration(login, getKursusYear()));
 
   return {
     ok: true,
-    email,
+    email: login,
     familyName: isAdmin ? "Kursusleder" : familyName,
     isAdmin,
     adminNavn: isAdmin ? adminNavn : null,
@@ -38,37 +42,43 @@ async function buildAuthResponse(email: string, isAdmin: boolean, adminNavn: str
   };
 }
 
+function brugerCreateFields(login: string, code: string): Record<string, unknown> {
+  return {
+    [BRUGERE_LOGIN_FIELDS.email]: login,
+    [BRUGERE_LOGIN_FIELDS.brugernavn]: login,
+    [BRUGERE_LOGIN_FIELDS.kode]: code,
+    [BRUGERE_LOGIN_FIELDS.status]: "Bruger",
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, email: rawEmail, code } = body as {
+    const { action, email: rawLogin, brugernavn: rawBrugernavn, code } = body as {
       action: "login" | "check" | "create" | "setCode" | "resetCode";
       email?: string;
+      brugernavn?: string;
       code?: string;
     };
 
-    const email = (rawEmail as string)?.trim()?.toLowerCase();
-    if (!email) {
-      return NextResponse.json({ error: "Email mangler" }, { status: 400 });
+    const login = parseLogin(rawBrugernavn ?? rawLogin);
+    if (!login) {
+      return NextResponse.json({ error: "Brugernavn mangler" }, { status: 400 });
     }
 
     if (action === "check") {
-      const existsIn2026 = await emailExistsIn2026(email);
-      const bruger = await getBrugerByEmail(email);
+      const inYearTable = await loginExistsInYearTable(login);
+      const bruger = await getBrugerByLogin(login);
       const hasCode = !!bruger?.code;
       const brugerExists = !!bruger?.recordId;
-      const familyName = existsIn2026 ? await getFamilyByEmail(email) : null;
+      const familyName = inYearTable ? await getFamilyByLogin(login) : login;
       const isAdmin = bruger?.isAdmin ?? false;
-      const needsReg = isAdmin
-        ? false
-        : existsIn2026
-          ? !(await hasWorkshopRegistration(email, getYear()))
-          : true;
-      const needsSetCode = !hasCode && (brugerExists || existsIn2026);
+      const needsReg = isAdmin ? false : !(await hasWorkshopRegistration(login, getKursusYear()));
+      const needsSetCode = !hasCode && (brugerExists || inYearTable);
 
       if (hasCode) {
         return NextResponse.json({
-          existsIn2026,
+          existsIn2026: inYearTable,
           hasBruger: true,
           needsSetCode: false,
           nextStep: "code" as const,
@@ -79,7 +89,7 @@ export async function POST(request: Request) {
       }
       if (needsSetCode) {
         return NextResponse.json({
-          existsIn2026,
+          existsIn2026: inYearTable,
           hasBruger: brugerExists,
           needsSetCode: true,
           nextStep: "setCode" as const,
@@ -88,14 +98,15 @@ export async function POST(request: Request) {
           needsWorkshopRegistration: needsReg,
         });
       }
+
       return NextResponse.json({
-        existsIn2026,
+        existsIn2026: inYearTable,
         hasBruger: false,
         needsSetCode: true,
         nextStep: "create" as const,
         familyName,
-        isAdmin,
-        needsWorkshopRegistration: isAdmin ? false : true,
+        isAdmin: false,
+        needsWorkshopRegistration: true,
       });
     }
 
@@ -103,74 +114,56 @@ export async function POST(request: Request) {
       if (!code || code.length < 4) {
         return NextResponse.json({ error: "Vælg en kode på mindst 4 tegn" }, { status: 400 });
       }
-      const existingBruger = await getBrugerByEmail(email);
+      const existingBruger = await getBrugerByLogin(login);
       if (existingBruger?.recordId) {
         return NextResponse.json(
-          { error: "Du har allerede en bruger med denne email. Log ind med din kode eller brug 'Glemt kode?'" },
+          { error: "Du har allerede en bruger med dette brugernavn. Log ind med din kode." },
           { status: 409 }
         );
       }
-      try {
-        await createAirtableRecord(TABLE_BRUGERE, {
-          [BRUGERE_EMAIL_FIELDS[0]]: email,
-          [BRUGERE_KODE_FIELDS[0]]: code,
-          [BRUGERE_STATUS_FIELD]: "Bruger",
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Kunne ikke oprette bruger";
-        if (msg.includes("duplicate") || msg.includes("already")) {
-          return NextResponse.json({ error: "Denne email er allerede oprettet" }, { status: 409 });
-        }
-        throw e;
-      }
-      return NextResponse.json(await buildAuthResponse(email, false));
+      await createAirtableRecord(TABLE_BRUGERE, brugerCreateFields(login, code));
+      return NextResponse.json(await buildAuthResponse(login, false));
     }
 
     if (action === "resetCode") {
       if (!code || code.length < 4) {
         return NextResponse.json({ error: "Vælg en ny kode på mindst 4 tegn" }, { status: 400 });
       }
-      const bruger = await getBrugerByEmail(email);
+      const bruger = await getBrugerByLogin(login);
       if (!bruger?.recordId) {
-        return NextResponse.json({ error: "Ingen bruger fundet med denne email" }, { status: 404 });
+        return NextResponse.json({ error: "Ingen bruger fundet med dette brugernavn" }, { status: 404 });
       }
       await updateAirtableRecord(TABLE_BRUGERE, bruger.recordId, {
-        [BRUGERE_KODE_FIELDS[0]]: code,
+        [BRUGERE_LOGIN_FIELDS.kode]: code,
       });
-      return NextResponse.json(await buildAuthResponse(email, bruger.isAdmin, bruger.adminNavn));
+      return NextResponse.json(await buildAuthResponse(login, bruger.isAdmin, bruger.adminNavn));
     }
 
     if (action === "setCode") {
       if (!code || code.length < 4) {
         return NextResponse.json({ error: "Vælg en kode på mindst 4 tegn" }, { status: 400 });
       }
-      const bruger = await getBrugerByEmail(email);
+      const bruger = await getBrugerByLogin(login);
       if (bruger?.code) {
         return NextResponse.json({ error: "Du har allerede en kode. Log ind med den." }, { status: 400 });
       }
       if (bruger?.recordId) {
         await updateAirtableRecord(TABLE_BRUGERE, bruger.recordId, {
-          [BRUGERE_KODE_FIELDS[0]]: code,
+          [BRUGERE_LOGIN_FIELDS.kode]: code,
         });
-        return NextResponse.json(
-          await buildAuthResponse(email, bruger.isAdmin, bruger.adminNavn)
-        );
+        return NextResponse.json(await buildAuthResponse(login, bruger.isAdmin, bruger.adminNavn));
       }
 
-      await createAirtableRecord(TABLE_BRUGERE, {
-        [BRUGERE_EMAIL_FIELDS[0]]: email,
-        [BRUGERE_KODE_FIELDS[0]]: code,
-        [BRUGERE_STATUS_FIELD]: "Bruger",
-      });
-      return NextResponse.json(await buildAuthResponse(email, false));
+      await createAirtableRecord(TABLE_BRUGERE, brugerCreateFields(login, code));
+      return NextResponse.json(await buildAuthResponse(login, false));
     }
 
     if (action === "login") {
-      const bruger = await getBrugerByEmail(email);
+      const bruger = await getBrugerByLogin(login);
 
       if (!bruger?.code) {
         return NextResponse.json(
-          { error: "Du skal vælge en kode først. Gå tilbage og fortsæt med din email." },
+          { error: "Du skal vælge en kode først. Gå tilbage og indtast dit brugernavn." },
           { status: 403 }
         );
       }
@@ -179,9 +172,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Forkert kode" }, { status: 401 });
       }
 
-      return NextResponse.json(
-        await buildAuthResponse(email, bruger.isAdmin, bruger.adminNavn)
-      );
+      return NextResponse.json(await buildAuthResponse(login, bruger.isAdmin, bruger.adminNavn));
     }
 
     return NextResponse.json({ error: "Ukendt handling" }, { status: 400 });

@@ -1,9 +1,17 @@
 import { appendVoksencafeProgram } from "@/data/program";
 import { normalizeMoedOsStoredImage, toAbsoluteMoedOsImageUrl } from "@/lib/blob-config";
+import {
+  createFkRecord,
+  deleteFkRecord,
+  fetchFkRecords,
+  getFkTableFieldNames,
+  updateFkRecord,
+} from "@/lib/fk-records";
+import { getKursusYear } from "@/lib/kursus-year";
 import { getStaticMoedOsNameToSlugMap } from "@/lib/moed-os";
 
 const AIRTABLE_BASE_ID = "appWYXnvNcnZS3yPu";
-// 2026: workshop-tilmeldinger (tabel-ID fra Airtable-URL). Betalt: tabel med dem der har betalt. Program: dagsprogrammer
+// Deltagerliste pr. år (Supabase table_key participants_YYYY). Legacy Airtable-ID kun til migrering.
 const TABLE_2026 = "tblbCaeQzsAhNQyF3";
 const TABLE_BETALT = "Betalt";
 const TABLE_PROGRAM = "Program";
@@ -21,6 +29,8 @@ const ALDERSGRUPPER_TABLE_NAMES = [
 ];
 
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
+const BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login", "Username", "username"];
+const BRUGERE_BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login", ...EMAIL_FIELDS];
 
 // Feltnavne for workshop-kolonner i 2026-tabellen (Deltagerliste)
 export const WORKSHOP_FIELDS: Record<string, string[]> = {
@@ -42,43 +52,15 @@ export interface AirtableResponse {
 }
 
 async function fetchTableRecords(tableIdOrName: string): Promise<AirtableRecord[]> {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat. Tilføj den i .env.local eller Vercel miljøvariabler.");
-  }
-
-  const records: AirtableRecord[] = [];
-  let offset: string | undefined;
-  const encodedTable = encodeURIComponent(tableIdOrName);
-
-  do {
-    const url = new URL(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodedTable}`
-    );
-    if (offset) url.searchParams.set("offset", offset);
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      next: { revalidate: 60 }, // Cache i 60 sekunder
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Airtable API fejl (${response.status}): ${error}`);
-    }
-
-    const data: AirtableResponse = await response.json();
-    records.push(...data.records);
-    offset = data.offset;
-  } while (offset);
-
-  return records;
+  const records = await fetchFkRecords(tableIdOrName);
+  return records.map((record) => ({
+    id: record.id,
+    fields: record.fields,
+  }));
 }
 
 async function fetchAllRecords(): Promise<AirtableRecord[]> {
-  return fetchTableRecords(TABLE_2026);
+  return fetchTableRecords(getYearTableId(getKursusYear()));
 }
 
 function getWorkshopValues(record: AirtableRecord, possibleNames: string[]): string[] {
@@ -412,7 +394,7 @@ export async function getAdminAssignedWorkshops(
 
   const slotByNorm = new Map<string, WorkshopSlotKey>();
   try {
-    const options = await getWorkshopOptions(new Date().getFullYear());
+    const options = await getWorkshopOptions(getKursusYear());
     for (const slot of WORKSHOP_SLOT_KEYS) {
       for (const name of options[slot] || []) {
         slotByNorm.set(normalizeWorkshopName(name), slot);
@@ -663,45 +645,80 @@ function getEmailFromRecord(record: AirtableRecord): string | null {
   return getFieldValue(record, EMAIL_FIELDS);
 }
 
+export function normalizeLoginName(login: string): string {
+  return login.trim().replace(/\s+/g, " ");
+}
+
+function getParticipantLoginFromRecord(record: AirtableRecord): string | null {
+  return (
+    getFieldValue(record, BRUGERNAVN_FIELDS) ||
+    getEmailFromRecord(record) ||
+    getFieldValue(record, FAMILIE_FIELDS)
+  );
+}
+
+function loginMatchesRecord(record: AirtableRecord, login: string): boolean {
+  const target = normalizeLoginName(login).toLowerCase();
+  const candidates = [
+    getFieldValue(record, BRUGERNAVN_FIELDS),
+    getEmailFromRecord(record),
+    getFieldValue(record, FAMILIE_FIELDS),
+    getFieldValue(record, NAVN_FIELDS),
+  ];
+  return candidates.some((c) => c && normalizeLoginName(c).toLowerCase() === target);
+}
+
 export async function getFamilyByEmail(email: string): Promise<string | null> {
+  return getFamilyByLogin(email);
+}
+
+export async function getFamilyByLogin(login: string): Promise<string | null> {
   const records = await fetchAllRecords();
   for (const record of records) {
-    const recEmail = getEmailFromRecord(record);
-    if (recEmail?.toLowerCase() === email.toLowerCase()) {
-      const fam = getFieldValue(record, FAMILIE_FIELDS);
-      return fam || null;
-    }
+    if (!loginMatchesRecord(record, login)) continue;
+    const fam = getFieldValue(record, FAMILIE_FIELDS);
+    return fam || getParticipantLoginFromRecord(record) || null;
   }
   return null;
 }
 
 export async function emailExistsIn2026(email: string): Promise<boolean> {
+  return loginExistsInYearTable(email);
+}
+
+export async function loginExistsInYearTable(login: string): Promise<boolean> {
   const records = await fetchAllRecords();
   for (const record of records) {
-    const recEmail = getEmailFromRecord(record);
-    if (recEmail?.toLowerCase() === email.toLowerCase()) return true;
+    if (loginMatchesRecord(record, login)) return true;
   }
   return false;
 }
 
+export async function hasAnyParticipantsInKursusYear(): Promise<boolean> {
+  const records = await fetchTableRecords(getYearTableId(getKursusYear()));
+  return records.some((rec) => Object.keys(rec.fields).length > 0);
+}
+
 export function getYearTableId(year: number): string {
-  return year === 2026 ? TABLE_2026 : String(year);
+  return String(year);
+}
+
+function getActiveYearTableId(): string {
+  return getYearTableId(getKursusYear());
 }
 
 export async function hasWorkshopRegistration(email: string, year: number): Promise<boolean> {
   const tableId = getYearTableId(year);
   const records = await fetchTableRecords(tableId);
   for (const record of records) {
-    const recEmail = getEmailFromRecord(record);
-    if (recEmail?.toLowerCase() === email.toLowerCase()) {
-      const hasWs =
-        getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1) ||
-        getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2) ||
-        getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3) ||
-        getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4) ||
-        getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
-      if (hasWs) return true;
-    }
+    if (!loginMatchesRecord(record, email)) continue;
+    const hasWs =
+      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1) ||
+      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop2) ||
+      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop3) ||
+      getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop4) ||
+      getFirstWorkshopValue(record, WORKSHOP_FIELDS.voksen);
+    if (hasWs) return true;
   }
   return false;
 }
@@ -723,12 +740,19 @@ function isAdminBrugerstatus(raw: string | null): boolean {
 }
 
 export async function getBrugerByEmail(email: string): Promise<BrugerInfo | null> {
+  return getBrugerByLogin(email);
+}
+
+export async function getBrugerByLogin(login: string): Promise<BrugerInfo | null> {
+  const target = normalizeLoginName(login).toLowerCase();
   try {
     const records = await fetchTableRecords(TABLE_BRUGERE);
     let fallback: BrugerInfo | null = null;
     for (const record of records) {
-      const recEmail = getEmailFromRecord(record);
-      if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
+      const brugerLogin =
+        getFieldValue(record, BRUGERE_BRUGERNAVN_FIELDS) ||
+        getEmailFromRecord(record);
+      if (brugerLogin?.toLowerCase() !== target) continue;
       const code = getFieldValue(record, KODE_FIELDS)?.trim() || null;
       const isAdmin = isAdminBrugerstatus(getFieldValue(record, BRUGERSTATUS_FIELDS));
       const adminNavn = getFieldValue(record, BRUGERE_NAVN_FIELDS)?.trim() || null;
@@ -757,30 +781,7 @@ export async function createAirtableRecord(
   tableIdOrName: string,
   fields: Record<string, unknown>
 ): Promise<{ id: string }> {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat.");
-  }
-
-  const response = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableIdOrName)}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ records: [{ fields }] }),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Airtable fejl (${response.status}): ${err}`);
-  }
-
-  const data = (await response.json()) as { records: { id: string }[] };
-  return { id: data.records[0].id };
+  return createFkRecord(tableIdOrName, fields);
 }
 
 export async function updateAirtableRecord(
@@ -788,52 +789,14 @@ export async function updateAirtableRecord(
   recordId: string,
   fields: Record<string, unknown>
 ): Promise<void> {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat.");
-  }
-
-  const response = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableIdOrName)}/${recordId}`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ fields }),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Airtable fejl (${response.status}): ${err}`);
-  }
+  await updateFkRecord(tableIdOrName, recordId, fields);
 }
 
 export async function deleteAirtableRecord(
   tableIdOrName: string,
   recordId: string
 ): Promise<void> {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat.");
-  }
-
-  const response = await fetch(
-    `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableIdOrName)}/${recordId}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Airtable fejl (${response.status}): ${err}`);
-  }
+  await deleteFkRecord(tableIdOrName, recordId);
 }
 
 export async function getBrugerRecordId(email: string): Promise<string | null> {
@@ -1019,7 +982,7 @@ function resolveFieldName(allFieldNames: Set<string>, possibleNames: string[]): 
 }
 
 function getCurrentYear(): number {
-  return new Date().getFullYear();
+  return getKursusYear();
 }
 
 export async function getAftengrupperOptions(): Promise<string[]> {
@@ -1158,39 +1121,7 @@ export async function findRecordInYearTableByNavnAndEmail(
 }
 
 async function getTableFieldNames(tableId: string): Promise<Set<string>> {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) return new Set<string>();
-  try {
-    const url = `https://api.airtable.com/v0/meta/bases/${AIRTABLE_BASE_ID}/tables`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      next: { revalidate: 300 },
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { tables?: { id: string; name?: string; fields?: { name: string }[] }[] };
-      const tables = data.tables ?? [];
-      for (const t of tables) {
-        if (t.id === tableId || t.name === tableId) {
-          const names = new Set<string>();
-          for (const f of t.fields ?? []) {
-            if (f.name) names.add(f.name);
-          }
-          if (names.size > 0) return names;
-          break;
-        }
-      }
-    }
-  } catch {
-    // Fortsæt til fallback
-  }
-  const records = await fetchTableRecords(tableId);
-  const allNames = new Set<string>();
-  for (const rec of records) {
-    for (const key of Object.keys(rec.fields)) {
-      allNames.add(key);
-    }
-  }
-  return allNames;
+  return getFkTableFieldNames(tableId);
 }
 
 export async function getYearTableFieldNames(): Promise<string[]> {
@@ -1301,12 +1232,15 @@ export async function getFamilyMembers(familyName: string): Promise<FamilyMember
 }
 
 export async function getFamilyMembersByEmail(email: string): Promise<FamilyMember[]> {
+  return getFamilyMembersByLogin(email);
+}
+
+export async function getFamilyMembersByLogin(login: string): Promise<FamilyMember[]> {
   const records = await fetchAllRecords();
   const members: FamilyMember[] = [];
 
   for (const record of records) {
-    const recEmail = getEmailFromRecord(record);
-    if (recEmail?.toLowerCase() !== email.toLowerCase()) continue;
+    if (!loginMatchesRecord(record, login)) continue;
 
     const navn = getFieldValue(record, NAVN_FIELDS) || "Ukendt";
     const workshop1 = getFirstWorkshopValue(record, WORKSHOP_FIELDS.workshop1);
@@ -1644,8 +1578,9 @@ function getCanonicalHoldForFamilyMembers(members: AirtableRecord[]): string | n
 }
 
 export async function consolidateFamilieloebFamiliesIn2026(): Promise<number> {
-  const records = await fetchTableRecords(TABLE_2026);
-  const fieldNames = await getTableFieldNames(TABLE_2026);
+  const yearTable = getActiveYearTableId();
+  const records = await fetchTableRecords(yearTable);
+  const fieldNames = await getTableFieldNames(yearTable);
   const holdField = resolveFieldName(fieldNames, RECORD_2026_FAMILIELOEB_HOLD_FIELDS);
   const families = await getFamiliesFrom2026Records(records);
 
@@ -1657,7 +1592,7 @@ export async function consolidateFamilieloebFamiliesIn2026(): Promise<number> {
     for (const rec of members) {
       const currentHold = getFamilieloebHoldFromRecord(rec);
       if (currentHold === canonicalHold) continue;
-      await updateAirtableRecord(TABLE_2026, rec.id, {
+      await updateAirtableRecord(getActiveYearTableId(), rec.id, {
         [holdField]: canonicalHold,
       });
       updated += 1;
@@ -1667,7 +1602,7 @@ export async function consolidateFamilieloebFamiliesIn2026(): Promise<number> {
 }
 
 async function getFamilyRaceHoldsFrom2026HoldField(): Promise<FamilyRaceHold[]> {
-  const records = await fetchTableRecords(TABLE_2026);
+  const records = await fetchTableRecords(getActiveYearTableId());
   const families = await getFamiliesFrom2026Records(records);
   const byHold = new Map<string, Map<string, FamilyRaceMember[]>>();
 
@@ -2163,54 +2098,8 @@ function normalizeTableLookupName(name: string): string {
 
 async function resolveProgramAnsvarTableId(): Promise<string> {
   if (cachedProgramAnsvarTableId) return cachedProgramAnsvarTableId;
-
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat.");
-  }
-
-  try {
-    const url = `https://api.airtable.com/v0/meta/bases/${AIRTABLE_BASE_ID}/tables`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { tables?: { id: string; name?: string }[] };
-      for (const candidate of PROGRAM_ANSVAR_TABLE_CANDIDATES) {
-        const table = data.tables?.find((entry) => entry.name === candidate);
-        if (table?.id) {
-          cachedProgramAnsvarTableId = table.id;
-          return table.id;
-        }
-      }
-      const fuzzy = data.tables?.find((entry) => {
-        if (!entry.name) return false;
-        const normalized = normalizeTableLookupName(entry.name);
-        return normalized.includes("program") && normalized.includes("ansvar");
-      });
-      if (fuzzy?.id) {
-        cachedProgramAnsvarTableId = fuzzy.id;
-        return fuzzy.id;
-      }
-    }
-  } catch {
-    // Fortsæt til direkte opslag
-  }
-
-  for (const candidate of PROGRAM_ANSVAR_TABLE_CANDIDATES) {
-    try {
-      await fetchTableRecords(candidate);
-      cachedProgramAnsvarTableId = candidate;
-      return candidate;
-    } catch {
-      // Prøv næste navn
-    }
-  }
-
-  throw new Error(
-    "Airtable-tabellen «Program ansvar» findes ikke, eller API-nøglen har ikke adgang. Opret tabellen med felterne Program nøgle, Dag, Tid, Titel, Admin email, Admin navn og Note, og giv token skriverettigheder."
-  );
+  cachedProgramAnsvarTableId = "program_ansvar";
+  return "program_ansvar";
 }
 
 function formatProgramAnsvarAirtableError(error: unknown): Error {
@@ -2302,39 +2191,7 @@ export async function getProgramAnsvarligeRecords(): Promise<ProgramAnsvarligRec
 
 async function fetchProgramAnsvarTableRecords(): Promise<AirtableRecord[]> {
   const tableId = await resolveProgramAnsvarTableId();
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat.");
-  }
-
-  const records: AirtableRecord[] = [];
-  let offset: string | undefined;
-  const encodedTable = encodeURIComponent(tableId);
-
-  do {
-    const url = new URL(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodedTable}`
-    );
-    if (offset) url.searchParams.set("offset", offset);
-
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw formatProgramAnsvarAirtableError(
-        new Error(`Airtable API fejl (${response.status}): ${error}`)
-      );
-    }
-
-    const data: AirtableResponse = await response.json();
-    records.push(...data.records);
-    offset = data.offset;
-  } while (offset);
-
-  return records;
+  return fetchTableRecords(tableId);
 }
 
 async function getProgramAnsvarTableFieldNames(): Promise<Set<string>> {
@@ -2819,39 +2676,7 @@ function getMoedOsRecordData(record: AirtableRecord, slug: string): MoedOsAirtab
 }
 
 async function fetchMoedOsTableRecords(): Promise<AirtableRecord[]> {
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("AIRTABLE_API_KEY er ikke sat. Tilføj den i .env.local eller Vercel miljøvariabler.");
-  }
-
-  const records: AirtableRecord[] = [];
-  let offset: string | undefined;
-  const encodedTable = encodeURIComponent(TABLE_MOED_OS);
-
-  do {
-    const url = new URL(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodedTable}`
-    );
-    if (offset) url.searchParams.set("offset", offset);
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Airtable API fejl (${response.status}): ${error}`);
-    }
-
-    const data: AirtableResponse = await response.json();
-    records.push(...data.records);
-    offset = data.offset;
-  } while (offset);
-
-  return records;
+  return fetchTableRecords(TABLE_MOED_OS);
 }
 
 async function getMoedOsTableFieldNames(): Promise<Set<string>> {

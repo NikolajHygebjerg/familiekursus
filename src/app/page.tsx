@@ -3,10 +3,6 @@
 import { useEffect, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
-import { familiekursusBilledeUrl } from "@/lib/blob-config";
-import { BilleduploadFilePicker } from "@/components/BilleduploadFilePicker";
-import { compressImageIfNeeded, MAX_UPLOAD_BYTES, validateBilleduploadFile } from "@/lib/image-upload";
-
 interface WorkshopCount {
   name: string;
   count: number;
@@ -40,7 +36,6 @@ const WORKSHOP_LABELS: Record<string, string> = {
   gyserløb: "Gyserløb",
   sheltertur: "Sheltertur",
   forhaandstilmelding: "Forhåndstilmeldinger",
-  billedupload: "Billedupload",
 };
 
 const WORKSHOP_TABS = [
@@ -53,7 +48,6 @@ const WORKSHOP_TABS = [
   "gyserløb",
   "sheltertur",
   "forhaandstilmelding",
-  "billedupload",
 ] as const;
 
 const ACTIVITY_TABS = new Set(["aftengrupper", "gyserløb", "sheltertur"]);
@@ -71,41 +65,6 @@ interface ForhaandstilmeldingSummary {
   voksne: number;
   born: number;
   total: number;
-}
-
-interface BilleduploadFile {
-  pathname: string;
-  url?: string;
-  filename: string;
-  email: string;
-  uploadedAt: string;
-  size: number;
-}
-
-interface BilleduploadGroup {
-  email: string;
-  familie: string | null;
-  files: BilleduploadFile[];
-}
-
-interface BilleduploadSummary {
-  families: number;
-  images: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatUploadDate(iso: string): string {
-  return new Date(iso).toLocaleString("da-DK", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export default function AntalPage() {
@@ -126,37 +85,6 @@ export default function AntalPage() {
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [billeduploadGroups, setBilleduploadGroups] = useState<BilleduploadGroup[]>([]);
-  const [billeduploadSummary, setBilleduploadSummary] = useState<BilleduploadSummary | null>(null);
-  const [downloadingZip, setDownloadingZip] = useState(false);
-  const [zipMessage, setZipMessage] = useState<string | null>(null);
-  const [zipError, setZipError] = useState<string | null>(null);
-  const [adminUploadFiles, setAdminUploadFiles] = useState<File[]>([]);
-  const [adminUploadTargetEmail, setAdminUploadTargetEmail] = useState("");
-  const [adminUploading, setAdminUploading] = useState(false);
-  const [adminUploadError, setAdminUploadError] = useState<string | null>(null);
-  const [adminUploadSuccess, setAdminUploadSuccess] = useState<string | null>(null);
-
-  function loadBilledupload() {
-    if (!isKursusleder || !email) return;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/billedupload?list=1&email=${encodeURIComponent(email)}`)
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((body) => {
-            throw new Error(body.error || res.statusText);
-          });
-        }
-        return res.json();
-      })
-      .then((body: { groups: BilleduploadGroup[]; summary: BilleduploadSummary }) => {
-        setBilleduploadGroups(body.groups ?? []);
-        setBilleduploadSummary(body.summary ?? null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Fejl"))
-      .finally(() => setLoading(false));
-  }
 
   useEffect(() => {
     setLoading(true);
@@ -170,20 +98,6 @@ export default function AntalPage() {
     setForhaandSummary(null);
     setExportMessage(null);
     setExportError(null);
-    setBilleduploadGroups([]);
-    setBilleduploadSummary(null);
-    setZipMessage(null);
-    setZipError(null);
-
-    if (selectedWorkshop === "billedupload") {
-      if (!isKursusleder || !email) {
-        setLoading(false);
-        return;
-      }
-      loadBilledupload();
-      return;
-    }
-
     if (selectedWorkshop === "forhaandstilmelding") {
       if (!isKursusleder || !email) {
         setLoading(false);
@@ -245,83 +159,6 @@ export default function AntalPage() {
       setExportError(err instanceof Error ? err.message : "Eksport fejlede");
     } finally {
       setExporting(false);
-    }
-  }
-
-  async function handleDownloadBilleduploadZip() {
-    if (!email) return;
-    setDownloadingZip(true);
-    setZipMessage(null);
-    setZipError(null);
-    try {
-      const res = await fetch("/api/billedupload/zip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || "Download fejlede");
-      }
-      const blob = await res.blob();
-      const dateLabel = new Date().toISOString().slice(0, 10);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `familiekursus-billeder-${dateLabel}.zip`;
-      link.click();
-      URL.revokeObjectURL(url);
-      setZipMessage("ZIP-fil downloadet.");
-    } catch (err) {
-      setZipError(err instanceof Error ? err.message : "Download fejlede");
-    } finally {
-      setDownloadingZip(false);
-    }
-  }
-
-  async function handleAdminBilledupload() {
-    if (!email || adminUploadFiles.length === 0) {
-      setAdminUploadError("Vælg mindst ét billede");
-      return;
-    }
-
-    setAdminUploading(true);
-    setAdminUploadError(null);
-    setAdminUploadSuccess(null);
-
-    try {
-      let uploaded = 0;
-      for (const file of adminUploadFiles) {
-        const validationError = validateBilleduploadFile(file);
-        if (validationError) throw new Error(validationError);
-
-        const prepared = await compressImageIfNeeded(file);
-        if (prepared.size > MAX_UPLOAD_BYTES) {
-          throw new Error(`${file.name} er for stort (max 4,5 MB)`);
-        }
-        const formData = new FormData();
-        formData.append("email", email);
-        formData.append("file", prepared);
-        if (adminUploadTargetEmail.trim()) {
-          formData.append("targetEmail", adminUploadTargetEmail.trim().toLowerCase());
-        }
-        const res = await fetch("/api/billedupload", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Kunne ikke uploade ${file.name}`);
-        uploaded += 1;
-      }
-      setAdminUploadSuccess(
-        uploaded === 1 ? "1 billede uploadet." : `${uploaded} billeder uploadet.`
-      );
-      setAdminUploadFiles([]);
-      loadBilledupload();
-    } catch (err) {
-      setAdminUploadError(err instanceof Error ? err.message : "Upload fejlede");
-    } finally {
-      setAdminUploading(false);
     }
   }
 
@@ -513,164 +350,9 @@ export default function AntalPage() {
             </>
           )}
 
-          {!loading && !error && selectedWorkshop === "billedupload" && (
-            <>
-              {billeduploadSummary && (
-                <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg bg-amber-50 px-4 py-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">Familier</p>
-                    <p className="text-2xl font-bold text-amber-600">{billeduploadSummary.families}</p>
-                  </div>
-                  <div className="rounded-lg bg-slate-50 px-4 py-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">Billeder</p>
-                    <p className="text-2xl font-bold text-slate-800">{billeduploadSummary.images}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => void handleDownloadBilleduploadZip()}
-                  disabled={downloadingZip || billeduploadGroups.length === 0}
-                  className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-                >
-                  {downloadingZip ? "Pakker..." : "Download alle (ZIP)"}
-                </button>
-                <p className="text-sm text-slate-500">
-                  Download alle uploadede billeder grupperet efter familie (tilgængeligt for alle
-                  tilmeldte).
-                </p>
-              </div>
-
-              {zipMessage && (
-                <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
-                  {zipMessage}
-                </div>
-              )}
-              {zipError && (
-                <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{zipError}</div>
-              )}
-
-              <section className="mb-8 rounded-xl border border-slate-200 bg-white p-4">
-                <h3 className="font-semibold text-slate-800">Upload billeder</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Upload på vegne af en familie ved at angive deres email. Lad feltet stå tomt for at
-                  gemme under din egen konto.
-                </p>
-                <form
-                  className="mt-4 space-y-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void handleAdminBilledupload();
-                  }}
-                >
-                  <div>
-                    <label
-                      htmlFor="admin-upload-target-email"
-                      className="mb-1 block text-sm font-medium text-slate-700"
-                    >
-                      Familie-email (valgfri)
-                    </label>
-                    <input
-                      id="admin-upload-target-email"
-                      type="email"
-                      value={adminUploadTargetEmail}
-                      onChange={(e) => setAdminUploadTargetEmail(e.target.value)}
-                      placeholder="fx familie@example.dk"
-                      className="w-full rounded-lg border border-slate-300 px-4 py-2 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                    />
-                  </div>
-                  <BilleduploadFilePicker
-                    id="admin-upload-files"
-                    files={adminUploadFiles}
-                    onChange={setAdminUploadFiles}
-                    disabled={adminUploading}
-                    helperText="Kun billeder — videoer accepteres ikke. Max 4,5 MB pr. billede."
-                  />
-                  {adminUploadError && (
-                    <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {adminUploadError}
-                    </div>
-                  )}
-                  {adminUploadSuccess && (
-                    <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
-                      {adminUploadSuccess}
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={adminUploading}
-                    className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-                  >
-                    {adminUploading ? "Uploader..." : "Upload billeder"}
-                  </button>
-                </form>
-              </section>
-
-              {billeduploadGroups.length === 0 ? (
-                <p className="text-slate-500">Ingen billeder uploadet endnu.</p>
-              ) : (
-                <div className="space-y-8">
-                  {billeduploadGroups.map((group) => (
-                    <div key={group.email}>
-                      <div className="mb-3">
-                        <h3 className="font-semibold text-slate-800">
-                          {group.familie || group.email}
-                        </h3>
-                        <p className="text-xs text-slate-500">
-                          {group.email} · {group.files.length}{" "}
-                          {group.files.length === 1 ? "billede" : "billeder"}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                        {group.files.map((file) => (
-                          <div
-                            key={file.pathname}
-                            className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                          >
-                            <a
-                              href={familiekursusBilledeUrl(file.pathname, email!, false, file.url)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block aspect-square bg-slate-200"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={familiekursusBilledeUrl(file.pathname, email!, false, file.url)}
-                                alt={file.filename}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                            </a>
-                            <div className="space-y-2 p-2">
-                              <p className="truncate text-xs text-slate-600" title={file.filename}>
-                                {file.filename}
-                              </p>
-                              <p className="text-xs text-slate-400">
-                                {formatUploadDate(file.uploadedAt)} · {formatBytes(file.size)}
-                              </p>
-                              <a
-                                href={familiekursusBilledeUrl(file.pathname, email!, true, file.url)}
-                                className="inline-block text-xs font-medium text-amber-700 hover:underline"
-                              >
-                                Download
-                              </a>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
           {!loading &&
             !error &&
             selectedWorkshop !== "forhaandstilmelding" &&
-            selectedWorkshop !== "billedupload" &&
             data.length === 0 && (
             <p className="text-slate-500">
               {selectedWorkshop === "aftengrupper"
@@ -686,7 +368,6 @@ export default function AntalPage() {
           {!loading &&
             !error &&
             selectedWorkshop !== "forhaandstilmelding" &&
-            selectedWorkshop !== "billedupload" &&
             data.length > 0 && (
             <>
               <div className="mb-4 flex items-center justify-between rounded-lg bg-amber-50 px-4 py-2">

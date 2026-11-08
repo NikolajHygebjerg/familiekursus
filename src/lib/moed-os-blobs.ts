@@ -1,5 +1,5 @@
-import { list } from "@vercel/blob";
-import { blobStoreOptions, moedOsImageProxyUrl } from "@/lib/blob-config";
+import { moedOsImageProxyUrl } from "@/lib/blob-config";
+import { listMoedOsImagePaths } from "@/lib/moed-os-storage";
 import type { MoedOsPersonView } from "@/lib/moed-os";
 
 const BLOB_PATH_PATTERN = /^moed-os\/(.+)-(\d+)\.([a-z0-9]+)$/i;
@@ -7,25 +7,19 @@ const BLOB_PATH_PATTERN = /^moed-os\/(.+)-(\d+)\.([a-z0-9]+)$/i;
 export async function getLatestMoedOsBlobPathBySlug(): Promise<Map<string, string>> {
   const latestBySlug = new Map<string, { pathname: string; uploadedAt: number }>();
 
-  try {
-    let cursor: string | undefined;
-    do {
-      const result = await list({ prefix: "moed-os/", cursor, limit: 1000, ...blobStoreOptions() });
-      for (const blob of result.blobs) {
-        const match = blob.pathname.match(BLOB_PATH_PATTERN);
-        if (!match) continue;
+  const files = await listMoedOsImagePaths();
+  for (const file of files) {
+    const match = file.pathname.match(BLOB_PATH_PATTERN);
+    if (!match) continue;
 
-        const slug = match[1].toLowerCase();
-        const uploadedAt = blob.uploadedAt?.getTime() ?? parseInt(match[2], 10);
-        const current = latestBySlug.get(slug);
-        if (!current || uploadedAt > current.uploadedAt) {
-          latestBySlug.set(slug, { pathname: blob.pathname, uploadedAt });
-        }
-      }
-      cursor = result.hasMore ? result.cursor : undefined;
-    } while (cursor);
-  } catch (error) {
-    console.error("Kunne ikke liste Mød os-billeder fra Blob:", error);
+    const slug = match[1].toLowerCase();
+    const uploadedAt = file.updatedAt
+      ? new Date(file.updatedAt).getTime()
+      : parseInt(match[2], 10);
+    const current = latestBySlug.get(slug);
+    if (!current || uploadedAt > current.uploadedAt) {
+      latestBySlug.set(slug, { pathname: file.pathname, uploadedAt });
+    }
   }
 
   const pathBySlug = new Map<string, string>();

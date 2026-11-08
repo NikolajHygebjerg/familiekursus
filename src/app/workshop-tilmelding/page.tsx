@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { DEFAULT_KURSUS_YEAR } from "@/lib/kursus-year";
 
 const WORKSHOP_LABELS: Record<string, string> = {
   workshop1: "Workshop 1",
@@ -68,7 +69,7 @@ export default function WorkshopTilmeldingPage() {
   useEffect(() => {
     if (!email || isAdmin) return;
     Promise.all([
-      fetch(`/api/workshop-options?year=${new Date().getFullYear()}`).then((res) => (res.ok ? res.json() : {})),
+      fetch(`/api/workshop-options?year=${DEFAULT_KURSUS_YEAR}`).then((res) => (res.ok ? res.json() : {})),
       fetch(`/api/families/email?email=${encodeURIComponent(email)}`).then((res) => (res.ok ? res.json() : [])),
     ])
       .then(([opts, mems]) => {

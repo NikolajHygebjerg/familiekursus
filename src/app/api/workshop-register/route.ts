@@ -3,16 +3,14 @@ import {
   getYearTableId,
   WORKSHOP_FIELDS,
 } from "@/lib/airtable";
+import { getKursusYear } from "@/lib/kursus-year";
 import { NextResponse } from "next/server";
 
 const NAVN_FIELDS = ["Navn", "navn", "Name", "name"];
 const EMAIL_FIELDS = ["Email", "email", "A Email"];
+const BRUGERNAVN_FIELDS = ["Brugernavn", "brugernavn", "Login", "login"];
 const FAMILIE_FIELDS = ["Familie", "familie", "Family", "family"];
 const BARN_VOKSEN_FIELDS = ["Barn/voksen", "Barn/Voksen", "barn_voksen"];
-
-function getYear(): number {
-  return new Date().getFullYear();
-}
 
 function fieldName(key: keyof typeof WORKSHOP_FIELDS): string {
   return WORKSHOP_FIELDS[key][0];
@@ -46,17 +44,19 @@ export async function POST(request: Request) {
     };
 
     if (!email?.trim()) {
-      return NextResponse.json({ error: "Email mangler" }, { status: 400 });
+      return NextResponse.json({ error: "Brugernavn mangler" }, { status: 400 });
     }
     if (!navn?.trim()) {
       return NextResponse.json({ error: "Navn mangler" }, { status: 400 });
     }
 
-    const year = getYear();
+    const year = getKursusYear();
     const tableId = getYearTableId(year);
 
+    const login = email.trim();
     const fields: Record<string, string> = {
-      [EMAIL_FIELDS[0]]: email.trim(),
+      [BRUGERNAVN_FIELDS[0]]: login,
+      [EMAIL_FIELDS[0]]: login,
       [NAVN_FIELDS[0]]: navn.trim(),
     };
     if (type?.trim()) fields[BARN_VOKSEN_FIELDS[0]] = type.trim();

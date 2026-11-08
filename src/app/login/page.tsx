@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
-type Step = "email" | "code" | "create" | "setCode" | "glemtKode";
+type Step = "brugernavn" | "code" | "create" | "setCode" | "glemtKode";
 
 type AuthResult = {
   email: string;
@@ -16,14 +16,14 @@ type AuthResult = {
 };
 
 function postLoginPath(data: AuthResult): string {
-  return data.isAdmin || !data.needsWorkshopRegistration ? "/program" : "/workshop-tilmelding";
+  return data.isAdmin ? "/program" : "/workshop-tilmelding";
 }
 
 function applyAuthAndRedirect(
   data: AuthResult,
   setAuth: ReturnType<typeof useAuth>["setAuth"],
   router: ReturnType<typeof useRouter>,
-  rememberEmail: (email: string) => void
+  rememberLogin: (login: string) => void
 ) {
   setAuth(
     data.email,
@@ -32,32 +32,34 @@ function applyAuthAndRedirect(
     Boolean(data.isAdmin),
     data.adminNavn ?? null
   );
-  rememberEmail(data.email);
+  rememberLogin(data.email);
   router.replace(postLoginPath(data));
 }
 
-const LOGIN_EMAIL_HISTORY_KEY = "familiekursus_login_email_history";
+const LOGIN_HISTORY_KEY = "familiekursus_login_history";
 const MAX_HISTORY = 12;
 
 export default function LoginPage() {
   const router = useRouter();
   const { setAuth, email, isAuthReady, needsWorkshopRegistration, isAdmin } = useAuth();
-  const [emailInput, setEmailInput] = useState("");
+  const [brugernavnInput, setBrugernavnInput] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<Step>("email");
+  const [step, setStep] = useState<Step>("brugernavn");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [emailHistory, setEmailHistory] = useState<string[]>(() => {
+  const [loginHistory, setLoginHistory] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const raw = localStorage.getItem(LOGIN_EMAIL_HISTORY_KEY);
+      const raw =
+        localStorage.getItem(LOGIN_HISTORY_KEY) ||
+        localStorage.getItem("familiekursus_login_email_history");
       const parsed = raw ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
     } catch {
       return [];
     }
   });
-  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
+  const [showLoginSuggestions, setShowLoginSuggestions] = useState(false);
   const [checkResult, setCheckResult] = useState<{
     existsIn2026: boolean;
     hasBruger: boolean;
@@ -68,12 +70,12 @@ export default function LoginPage() {
     isAdmin?: boolean;
   } | null>(null);
 
-  const rememberEmail = useCallback((value: string) => {
-    const e = value.trim().toLowerCase();
-    if (!e) return;
-    setEmailHistory((prev) => {
-      const next = [e, ...prev.filter((x) => x !== e)].slice(0, MAX_HISTORY);
-      localStorage.setItem(LOGIN_EMAIL_HISTORY_KEY, JSON.stringify(next));
+  const rememberLogin = useCallback((value: string) => {
+    const login = value.trim();
+    if (!login) return;
+    setLoginHistory((prev) => {
+      const next = [login, ...prev.filter((x) => x !== login)].slice(0, MAX_HISTORY);
+      localStorage.setItem(LOGIN_HISTORY_KEY, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -83,36 +85,40 @@ export default function LoginPage() {
     router.replace(!isAdmin && needsWorkshopRegistration ? "/workshop-tilmelding" : "/program");
   }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
 
-  const emailSuggestions = Array.from(
+  const loginSuggestions = Array.from(
     new Set(
-      emailHistory.filter((h) => h.toLowerCase().includes(emailInput.trim().toLowerCase()))
+      loginHistory.filter((h) =>
+        h.toLowerCase().includes(brugernavnInput.trim().toLowerCase())
+      )
     )
   ).slice(0, 12);
 
-  const handleEmailSubmit = useCallback(async () => {
-    const e = emailInput.trim().toLowerCase();
-    if (!e) return;
+  const loginPayload = (action: string, extra?: Record<string, string>) =>
+    JSON.stringify({ action, brugernavn: brugernavnInput.trim(), ...extra });
+
+  const handleBrugernavnSubmit = useCallback(async () => {
+    if (!brugernavnInput.trim()) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check", email: e }),
+        body: loginPayload("check"),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fejl");
       setCheckResult(data);
       setStep(data.nextStep);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke tjekke email");
+      setError(err instanceof Error ? err.message : "Kunne ikke tjekke brugernavn");
     } finally {
       setLoading(false);
     }
-  }, [emailInput]);
+  }, [brugernavnInput]);
 
   const handleLogin = useCallback(async () => {
-    const e = emailInput.trim().toLowerCase();
+    const e = brugernavnInput.trim().toLowerCase();
     if (!e || !code.trim()) return;
     setLoading(true);
     setError(null);
@@ -120,20 +126,20 @@ export default function LoginPage() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login", email: e, code: code.trim() }),
+        body: loginPayload("login", { code: code.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Forkert kode eller email");
-      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
+      if (!res.ok) throw new Error(data.error || "Forkert brugernavn eller kode");
+      applyAuthAndRedirect(data, setAuth, router, rememberLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login fejlede");
     } finally {
       setLoading(false);
     }
-  }, [emailInput, code, setAuth, router, rememberEmail]);
+  }, [brugernavnInput, code, setAuth, router, rememberLogin]);
 
   const handleCreateUser = useCallback(async () => {
-    const e = emailInput.trim().toLowerCase();
+    const e = brugernavnInput.trim().toLowerCase();
     if (!e || !code.trim() || code.length < 4) {
       setError("Vælg en kode på mindst 4 tegn");
       return;
@@ -144,20 +150,20 @@ export default function LoginPage() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", email: e, code: code.trim() }),
+        body: loginPayload("create", { code: code.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke oprette bruger");
-      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
+      applyAuthAndRedirect(data, setAuth, router, rememberLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Oprettelse fejlede");
     } finally {
       setLoading(false);
     }
-  }, [emailInput, code, setAuth, router, rememberEmail]);
+  }, [brugernavnInput, code, setAuth, router, rememberLogin]);
 
   const handleGlemtKode = useCallback(async () => {
-    const e = emailInput.trim().toLowerCase();
+    const e = brugernavnInput.trim().toLowerCase();
     if (!e || !code.trim() || code.length < 4) {
       setError("Vælg en ny kode på mindst 4 tegn");
       return;
@@ -168,20 +174,20 @@ export default function LoginPage() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "resetCode", email: e, code: code.trim() }),
+        body: loginPayload("resetCode", { code: code.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke nulstille kode");
-      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
+      applyAuthAndRedirect(data, setAuth, router, rememberLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke nulstille kode");
     } finally {
       setLoading(false);
     }
-  }, [emailInput, code, setAuth, router, rememberEmail]);
+  }, [brugernavnInput, code, setAuth, router, rememberLogin]);
 
   const handleSetCode = useCallback(async () => {
-    const e = emailInput.trim().toLowerCase();
+    const e = brugernavnInput.trim().toLowerCase();
     if (!e || !code.trim() || code.length < 4) {
       setError("Vælg en kode på mindst 4 tegn");
       return;
@@ -192,20 +198,20 @@ export default function LoginPage() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "setCode", email: e, code: code.trim() }),
+        body: loginPayload("setCode", { code: code.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunne ikke gemme kode");
-      applyAuthAndRedirect(data, setAuth, router, rememberEmail);
+      applyAuthAndRedirect(data, setAuth, router, rememberLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke gemme kode");
     } finally {
       setLoading(false);
     }
-  }, [emailInput, code, setAuth, router, rememberEmail]);
+  }, [brugernavnInput, code, setAuth, router, rememberLogin]);
 
   const reset = () => {
-    setStep("email");
+    setStep("brugernavn");
     setCode("");
     setError(null);
     setCheckResult(null);
@@ -232,36 +238,44 @@ export default function LoginPage() {
           Familiekursus
         </h1>
         <p className="mb-8 text-center text-slate-600">
-          Log ind med din email
+          Log ind med brugernavn og din personlige kode
         </p>
 
-        {step === "email" && (
+        {step === "brugernavn" && (
           <>
+            <label htmlFor="brugernavn" className="mb-1 block text-sm font-medium text-slate-700">
+              Brugernavn
+            </label>
+            <p className="mb-3 text-sm text-slate-500">
+              Vælg et brugernavn, I husker — gerne det samme, som I brugte ved tilmeldingen til
+              familiekursus.
+            </p>
             <div className="relative">
               <input
-                type="email"
-                value={emailInput}
+                id="brugernavn"
+                type="text"
+                value={brugernavnInput}
                 onChange={(e) => {
-                  setEmailInput(e.target.value);
-                  setShowEmailSuggestions(true);
+                  setBrugernavnInput(e.target.value);
+                  setShowLoginSuggestions(true);
                 }}
-                onFocus={() => setShowEmailSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowEmailSuggestions(false), 150)}
-                onKeyDown={(e) => e.key === "Enter" && handleEmailSubmit()}
-                placeholder="Din email"
+                onFocus={() => setShowLoginSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowLoginSuggestions(false), 150)}
+                onKeyDown={(e) => e.key === "Enter" && handleBrugernavnSubmit()}
+                placeholder="Jeres brugernavn"
                 className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 autoFocus
-                autoComplete="email"
+                autoComplete="username"
               />
-              {showEmailSuggestions && emailSuggestions.length > 0 && (
+              {showLoginSuggestions && loginSuggestions.length > 0 && (
                 <ul className="absolute z-10 mt-[-12px] max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                  {emailSuggestions.map((suggestion) => (
+                  {loginSuggestions.map((suggestion) => (
                     <li key={suggestion}>
                       <button
                         type="button"
                         onClick={() => {
-                          setEmailInput(suggestion);
-                          setShowEmailSuggestions(false);
+                          setBrugernavnInput(suggestion);
+                          setShowLoginSuggestions(false);
                         }}
                         className="w-full px-4 py-2 text-left text-slate-800 hover:bg-amber-50"
                       >
@@ -273,8 +287,8 @@ export default function LoginPage() {
               )}
             </div>
             <button
-              onClick={handleEmailSubmit}
-              disabled={loading || !emailInput.trim()}
+              onClick={handleBrugernavnSubmit}
+              disabled={loading || !brugernavnInput.trim()}
               className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
             >
               {loading ? "Tjekker..." : "Fortsæt"}
@@ -287,8 +301,8 @@ export default function LoginPage() {
             <p className="mb-2 text-sm text-slate-600">
               {step === "setCode"
                 ? checkResult?.existsIn2026
-                  ? "Velkommen! Vælg en personlig kode til dig selv (mindst 4 tegn) — det gør du kun én gang:"
-                  : "Vælg en personlig kode til dig selv (mindst 4 tegn):"
+                  ? "Velkommen! Vælg en personlig kode (mindst 4 tegn) — du gemmer den her og bruger den ved login fremover:"
+                  : "Vælg en personlig kode (mindst 4 tegn), som du vil bruge til at logge ind fremover:"
                 : "Indtast din kode:"}
             </p>
             <input
@@ -344,8 +358,8 @@ export default function LoginPage() {
               Vælg en ny kode (mindst 4 tegn). Din gamle kode erstattes.
             </p>
             <input
-              type="email"
-              value={emailInput}
+              type="text"
+              value={brugernavnInput}
               readOnly
               className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
             />
@@ -383,12 +397,12 @@ export default function LoginPage() {
         {step === "create" && (
           <>
             <p className="mb-4 text-sm text-slate-600">
-              Din email findes ikke i systemet endnu. Opret en bruger ved at vælge en personlig kode
-              (mindst 4 tegn):
+              Vælg en personlig kode (mindst 4 tegn). Systemet husker koden, så I kan logge ind med
+              brugernavn og kode fremover.
             </p>
             <input
-              type="email"
-              value={emailInput}
+              type="text"
+              value={brugernavnInput}
               readOnly
               className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-600"
             />
