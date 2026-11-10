@@ -23,9 +23,9 @@ const WORKSHOP1_LIST =
 const WORKSHOP2_LIST =
   "Pimp din egen nøglering og taskevedhæng · Adventurerace · T-shirt fabrikken 2 · Eksperimentariet · Klatring · Blomsterworkshop · Dans for sjov · Batik";
 const WORKSHOP3_LIST =
-  "Smykker · Rollespil · Linoleum · Maleri · Vildt! (snak og æd) · Tur til Økolariet og skovlegepladsen";
+  "Smykker · Rollespil · Linoleum · Maleri · Fra fasan til flammer · Tur til Økolariet og skovlegepladsen";
 const WORKSHOP4_LIST =
-  "Friluftsbadet · Naturbingo · Bolsjer · Miniplaneter – kreaværksted · Fodbold";
+  "Friluftsbadet · Natursafari · Bolsjer · Miniplaneter – kreaværksted · Fodbold";
 
 function eveningWindDown(): ProgramItem[] {
   return [
@@ -68,7 +68,7 @@ export const UGEPROGRAM: DagProgram[] = [
         titel: "Børn i aldersgrupper",
         aldersgrupperItem: true,
         beskrivelse:
-          "3–5 år: Hulehygge · 6 år: Bille Zoo · 7 år: Kreaworkshop · 8 år: Natur Bingo · 9 år: Skattejagt / Natur Bingo · 10–11 år: Battle / Krea · 11–12 år: Battle · 13+: Eget program",
+          "3–5 år: Hulehygge · 6 år: Bille Zoo · 7 år: Kreaworkshop · 8 år: Natursafari · 9 år: Skattejagt / Natursafari · 10–11 år: Battle / Krea · 11–12 år: Battle · 13+: Eget program",
       },
       {
         tid: "09:45-11:30",

@@ -153,7 +153,7 @@ const WORKSHOPBACKEND_LOKALE_FIELDS = [
 ];
 
 export function normalizeWorkshopName(name: string): string {
-  return name
+  const normalized = name
     .replace(/[\u2028\u2029]/g, "")
     .trim()
     .toLowerCase()
@@ -162,6 +162,13 @@ export function normalizeWorkshopName(name: string): string {
     .replace(/\s*-\s*/g, " - ")
     .replace(/\s+/g, " ")
     .trim();
+  if (normalized === "naturbingo" || normalized === "natur bingo") {
+    return "natursafari";
+  }
+  if (normalized === "vildt!" || /^vildt!\s*(\(snak og .*\))?$/.test(normalized)) {
+    return "fra fasan til flammer";
+  }
+  return normalized;
 }
 
 function pickCanonicalWorkshopDisplayName(

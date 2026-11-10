@@ -5,7 +5,6 @@ import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import AppHeader from "./AppHeader";
 import BottomNav from "./BottomNav";
-import SupabaseSourceInfo from "./SupabaseSourceInfo";
 
 const PUBLIC_PATHS = [
   "/velkommen",
@@ -42,7 +41,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <>
         <AppHeader />
         <div className="app-safe-x min-w-0">{children}</div>
-        <SupabaseSourceInfo />
       </>
     );
   }
@@ -63,7 +61,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <AppHeader />
       <div className="app-safe-x min-w-0 pb-20">{children}</div>
-      <SupabaseSourceInfo />
       <BottomNav />
     </>
   );
