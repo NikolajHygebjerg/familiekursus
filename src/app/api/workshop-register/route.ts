@@ -138,24 +138,25 @@ export async function POST(request: Request) {
 
     if (mode === "workshops") {
       const fieldResolvers = await getParticipantFieldResolvers(tableId);
+      const members = (body.members as MemberWorkshops[] | undefined) || [];
+      const acceptPartial = Boolean(body.acceptPartial);
+      const partialChoices = (body.partialChoices as Record<string, string[]> | undefined) || {};
+      const extendFamily = Boolean(body.extendFamily);
+
+      if (members.length === 0) {
+        return NextResponse.json({ error: "Ingen deltagere angivet" }, { status: 400 });
+      }
+
       const alreadyRegistered = await hasWorkshopRegistration(login, year);
-      if (alreadyRegistered) {
+      if (alreadyRegistered && !extendFamily) {
         return NextResponse.json(
           {
             error:
-              "Jeres familie har allerede tilmeldt workshops. Se dem under Tilmeldte i appen.",
+              "Jeres familie har allerede tilmeldt workshops. Brug «Tilføj familiemedlemmer» under Dine workshops for at udvide familien.",
             code: "ALREADY_REGISTERED",
           },
           { status: 403 }
         );
-      }
-
-      const members = (body.members as MemberWorkshops[] | undefined) || [];
-      const acceptPartial = Boolean(body.acceptPartial);
-      const partialChoices = (body.partialChoices as Record<string, string[]> | undefined) || {};
-
-      if (members.length === 0) {
-        return NextResponse.json({ error: "Ingen deltagere angivet" }, { status: 400 });
       }
 
       const roster = mergeRosterWithClientMembers(

@@ -21,6 +21,11 @@ import {
 } from "@/lib/forgot-code-challenge";
 import { getKursusYear } from "@/lib/kursus-year";
 import { validateBrugernavn } from "@/lib/brugernavn";
+import {
+  TERMS_ACCEPTANCE_FIELD,
+  TERMS_VERSION_FIELD,
+  USER_TERMS_VERSION,
+} from "@/lib/user-terms";
 import { getSupabaseConfigError, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
@@ -64,7 +69,11 @@ async function buildAuthResponse(login: string, isAdmin: boolean, adminNavn: str
   };
 }
 
-function brugerCreateFields(login: string, code?: string): Record<string, unknown> {
+function brugerCreateFields(
+  login: string,
+  code?: string,
+  options?: { termsAccepted?: boolean }
+): Record<string, unknown> {
   const fields: Record<string, unknown> = {
     [BRUGERE_LOGIN_FIELDS.brugernavn]: login,
     [BRUGERE_LOGIN_FIELDS.status]: "Bruger",
@@ -72,6 +81,10 @@ function brugerCreateFields(login: string, code?: string): Record<string, unknow
   const c = code?.trim();
   if (c && c.length >= 4) {
     fields[BRUGERE_LOGIN_FIELDS.kode] = c;
+  }
+  if (options?.termsAccepted) {
+    fields[TERMS_ACCEPTANCE_FIELD] = new Date().toISOString();
+    fields[TERMS_VERSION_FIELD] = USER_TERMS_VERSION;
   }
   return fields;
 }
@@ -104,6 +117,7 @@ export async function POST(request: Request) {
       code,
       challengeToken,
       barnNavn,
+      acceptedTerms,
     } = body as {
       action:
         | "login"
@@ -118,6 +132,7 @@ export async function POST(request: Request) {
       code?: string;
       challengeToken?: string;
       barnNavn?: string;
+      acceptedTerms?: boolean;
     };
 
     const parsedLogin = validateBrugernavn(rawBrugernavn ?? rawLogin);
@@ -179,6 +194,15 @@ export async function POST(request: Request) {
     }
 
     if (action === "create") {
+      if (!acceptedTerms) {
+        return NextResponse.json(
+          {
+            error:
+              "Du skal acceptere betingelserne for brug af appen, før familien kan oprettes. Læs betingelserne og afkryds feltet.",
+          },
+          { status: 400 }
+        );
+      }
       if (!code || code.length < 4) {
         return NextResponse.json({ error: "Vælg en kode på mindst 4 tegn" }, { status: 400 });
       }
@@ -189,7 +213,10 @@ export async function POST(request: Request) {
           { status: 409 }
         );
       }
-      await createAirtableRecord(TABLE_BRUGERE, brugerCreateFields(login, code));
+      await createAirtableRecord(
+        TABLE_BRUGERE,
+        brugerCreateFields(login, code, { termsAccepted: true })
+      );
       return NextResponse.json(await buildAuthResponse(login, false));
     }
 

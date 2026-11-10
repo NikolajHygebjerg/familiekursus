@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import AuthBranding from "@/components/AuthBranding";
 import { AuthResult, clearLegacyLoginHistory, postLoginPath } from "@/lib/auth-client";
 import { rejectAtInBrugernavn } from "@/lib/brugernavn";
+import { USER_TERMS_CHECKBOX_LABEL } from "@/lib/user-terms";
 
 export default function VelkommenPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function VelkommenPage() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   useEffect(() => {
     clearLegacyLoginHistory();
@@ -39,6 +41,10 @@ export default function VelkommenPage() {
       setError("Vælg en kode på mindst 4 tegn");
       return;
     }
+    if (!acceptedTerms) {
+      setError("Du skal acceptere betingelserne, før familien kan oprettes");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -49,6 +55,7 @@ export default function VelkommenPage() {
           action: "create",
           brugernavn: login,
           code: kode,
+          acceptedTerms: true,
         }),
       });
       const data = await res.json();
@@ -69,7 +76,7 @@ export default function VelkommenPage() {
     } finally {
       setLoading(false);
     }
-  }, [brugernavnInput, code, setAuth, router]);
+  }, [brugernavnInput, code, acceptedTerms, setAuth, router]);
 
   if (!isAuthReady || email) {
     return null;
@@ -114,14 +121,36 @@ export default function VelkommenPage() {
           onChange={(e) => setCode(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void handleOpret()}
           placeholder="Din kode (min. 4 tegn)"
-          className="mb-6 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+          className="mb-4 w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
           autoComplete="new-password"
         />
+
+        <label className="mb-6 flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+          />
+          <span>
+            {USER_TERMS_CHECKBOX_LABEL}{" "}
+            <Link
+              href="/betingelser"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-amber-700 underline hover:text-amber-800"
+            >
+              (læs betingelserne)
+            </Link>
+          </span>
+        </label>
 
         <button
           type="button"
           onClick={() => void handleOpret()}
-          disabled={loading || !brugernavnInput.trim() || code.trim().length < 4}
+          disabled={
+            loading || !brugernavnInput.trim() || code.trim().length < 4 || !acceptedTerms
+          }
           className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-white shadow-md hover:bg-amber-600 disabled:opacity-50"
         >
           {loading ? "Opretter..." : "Opret familie"}

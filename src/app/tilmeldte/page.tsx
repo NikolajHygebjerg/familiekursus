@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useFamily } from "@/context/FamilyContext";
 import { useAuth } from "@/context/AuthContext";
@@ -408,9 +409,17 @@ export default function TilmeldtePage() {
         {!loadingMembers && familyLabel && members.length > 0 && (
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="rounded-xl bg-white p-6 shadow-lg">
-              <h2 className="mb-6 text-xl font-semibold text-slate-800">
-                Familiemedlemmer
-              </h2>
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold text-slate-800">Familiemedlemmer</h2>
+                {familyLogin && (
+                  <Link
+                    href="/workshop-tilmelding?tilfoej=1"
+                    className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                  >
+                    Tilføj familiemedlemmer
+                  </Link>
+                )}
+              </div>
               <div className="space-y-4">
                 {members.map((member) => (
                   <div
@@ -541,7 +550,17 @@ export default function TilmeldtePage() {
         )}
 
         {!loadingMembers && !isKursusleder && selectedFamily && members.length === 0 && !error && (
-          <p className="text-slate-500">Ingen familiemedlemmer fundet.</p>
+          <div className="rounded-xl bg-white p-6 shadow-lg">
+            <p className="text-slate-600">Ingen familiemedlemmer fundet.</p>
+            {familyLogin && (
+              <Link
+                href="/workshop-tilmelding?tilfoej=1"
+                className="mt-4 inline-block rounded-lg bg-amber-500 px-4 py-3 text-sm font-medium text-white hover:bg-amber-600"
+              >
+                Tilføj familiemedlemmer
+              </Link>
+            )}
+          </div>
         )}
 
         {!isKursusleder && (

@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/velkommen",
   "/log-ind",
   "/login",
+  "/betingelser",
   "/workshop-tilmelding",
   "/velkommen-til-app",
 ];

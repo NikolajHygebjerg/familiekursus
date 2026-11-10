@@ -79,6 +79,25 @@ type Step = "family" | "children" | "adults";
 type WorkshopPersonDraft = Record<MainWorkshopSlot, string>;
 type WorkshopDraft = Record<string, WorkshopPersonDraft>;
 
+function adultWorkshopSetViaChildEscort(
+  adultNavn: string,
+  slot: MainWorkshopSlot,
+  children: FamilyMember[],
+  adults: FamilyMember[],
+  draft: WorkshopDraft,
+  externalEscorts: ExternalEscortDraft
+): boolean {
+  const workshopName = draft[adultNavn]?.[slot]?.trim();
+  if (!workshopName) return false;
+  for (const child of children) {
+    if ((draft[child.navn]?.[slot] || "") !== workshopName) continue;
+    if (externalEscorts[child.navn]?.[slot]) continue;
+    const linked = findFamilyAdultOnChildSlot(adults, draft, slot, workshopName);
+    if (linked === adultNavn) return true;
+  }
+  return false;
+}
+
 function optionLabel(opt: WorkshopOptionDetail, member: FamilyMember): string {
   if (isWorkshopBlockedForMember(member, opt.name)) {
     const rule = getWorkshopAgeRule(opt.name);
@@ -103,6 +122,7 @@ export default function WorkshopTilmeldingPage() {
     isAuthReady,
     needsWorkshopRegistration,
   } = useAuth();
+  const [extendFamilyMode, setExtendFamilyMode] = useState(false);
   const [step, setStep] = useState<Step>("family");
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [options, setOptions] = useState<Record<WorkshopSlotKey, WorkshopOptionDetail[]>>({
@@ -128,6 +148,11 @@ export default function WorkshopTilmeldingPage() {
   draftRef.current = draft;
   externalEscortsRef.current = externalEscorts;
   soloWithoutAdultRef.current = soloWithoutAdult;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setExtendFamilyMode(params.get("tilfoej") === "1");
+  }, []);
 
   const goToApp = useCallback(
     async (options?: {
@@ -285,7 +310,7 @@ export default function WorkshopTilmeldingPage() {
       router.replace("/program");
       return;
     }
-    if (!needsWorkshopRegistration) {
+    if (!needsWorkshopRegistration && !extendFamilyMode) {
       if (navigatingToWelcomeRef.current || peekPostRegistrationWelcome()) {
         if (!peekPostRegistrationWelcome()) {
           markPostRegistrationWelcome();
@@ -295,7 +320,7 @@ export default function WorkshopTilmeldingPage() {
       }
       router.replace("/tilmeldte");
     }
-  }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, router]);
+  }, [isAuthReady, email, isAdmin, needsWorkshopRegistration, extendFamilyMode, router]);
 
   useEffect(() => {
     if (!isAuthReady || !email || isAdmin) return;
@@ -780,6 +805,7 @@ export default function WorkshopTilmeldingPage() {
             members: membersBody,
             acceptPartial,
             partialChoices,
+            extendFamily: extendFamilyMode,
           }),
         });
         const data = await res.json();
@@ -833,7 +859,7 @@ export default function WorkshopTilmeldingPage() {
         await goToApp({
           registrationComplete: true,
           syncAuth: false,
-          showPostRegistrationWelcome: true,
+          showPostRegistrationWelcome: !extendFamilyMode,
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fejl");
@@ -841,7 +867,7 @@ export default function WorkshopTilmeldingPage() {
         setSubmitting(false);
       }
     },
-    [email, members, rosterForEscort, goToApp]
+    [email, members, rosterForEscort, goToApp, extendFamilyMode]
   );
 
   const acceptPartialForConflict = useCallback(
@@ -919,12 +945,27 @@ export default function WorkshopTilmeldingPage() {
   return (
     <main className="min-h-screen p-6 pb-24">
       <div className="mx-auto max-w-2xl">
+        {extendFamilyMode && (
+          <p className="mb-4 text-sm">
+            <button
+              type="button"
+              onClick={() => router.replace("/tilmeldte")}
+              className="font-medium text-amber-700 hover:text-amber-800 hover:underline"
+            >
+              ← Tilbage til Dine workshops
+            </button>
+          </p>
+        )}
+
         {step === "family" && (
           <>
-            <h1 className="mb-2 text-2xl font-bold text-slate-800">Familie</h1>
+            <h1 className="mb-2 text-2xl font-bold text-slate-800">
+              {extendFamilyMode ? "Tilføj familiemedlemmer" : "Familie"}
+            </h1>
             <p className="mb-6 text-sm text-slate-600">
-              Indtast fornavn og alder på alle familiemedlemmer, I vil vælge workshop for. Mindst én
-              skal være voksen (18+).
+              {extendFamilyMode
+                ? "Tilføj nye familiemedlemmer nedenfor. Når alle er på listen, vælger I workshops for hele familien (også dem, der allerede var tilmeldt). Mindst én voksen (18+)."
+                : "Indtast fornavn og alder på alle familiemedlemmer, I vil vælge workshop for. Mindst én skal være voksen (18+)."}
             </p>
 
             {members.length > 0 && (
@@ -1067,8 +1108,8 @@ export default function WorkshopTilmeldingPage() {
           <>
             <h1 className="mb-2 text-2xl font-bold text-slate-800">Voksnes workshops</h1>
             <p className="mb-4 text-sm text-slate-600">
-              Vælg workshop i de hold, hvor den voksen ikke allerede er tilmeldt for at følge et barn. Hold
-              udfyldt via ledsager er markeret som fastlagt.
+              Vælg workshop for hver voksen på alle fire hold. I kan ændre valg her, indtil I trykker
+              «Bekræft workshopvalg». Hold sat via ledsager er forudfyldt, men kan stadig ændres.
             </p>
 
             {loading ? (
@@ -1077,67 +1118,71 @@ export default function WorkshopTilmeldingPage() {
               <p className="text-slate-600">Ingen voksne i familien.</p>
             ) : (
               <div className="space-y-6">
-                {adultsWithOpenSlots.length === 0 ? (
+                {adultsWithOpenSlots.length === 0 && (
                   <p className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900">
-                    Alle voksne har valg på alle fire hold. Bekræft nedenfor.
+                    Alle voksne har valg på alle fire hold. Tjek listen og bekræft nedenfor.
                   </p>
-                ) : (
-                  adultsWithOpenSlots.map((adult) => (
-                    <section
-                      key={adult.navn}
-                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                    >
-                      <h2 className="mb-3 font-semibold text-slate-800">
-                        {adult.navn}
-                        {adult.alder != null && (
-                          <span className="ml-2 text-sm font-normal text-slate-500">
-                            {adult.alder} år
-                          </span>
-                        )}
-                      </h2>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {SLOT_KEYS.map((slot) => {
-                          const chosen = draft[adult.navn]?.[slot] || "";
-                          const locked = Boolean(chosen);
-                          return (
-                            <label key={slot} className="block text-sm">
-                              <span className="mb-1 block font-medium text-slate-700">
-                                {SLOT_LABELS[slot]}
-                              </span>
-                              {locked ? (
-                                <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-slate-800">
-                                  {chosen}
-                                  <p className="mt-1 text-xs text-emerald-800">Følger med barn</p>
-                                </div>
-                              ) : (
-                                <select
-                                  value=""
-                                  onChange={(e) =>
-                                    setMemberWorkshopChoice(adult.navn, slot, e.target.value)
-                                  }
-                                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800"
-                                >
-                                  <option value="">— Vælg —</option>
-                                  {(options[slot] || []).map((opt) => (
-                                    <option
-                                      key={opt.name}
-                                      value={opt.name}
-                                      disabled={
-                                        opt.soldOut || isWorkshopBlockedForMember(adult, opt.name)
-                                      }
-                                    >
-                                      {optionLabel(opt, adult)}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))
                 )}
+                {adultsInFamily.map((adult) => (
+                  <section
+                    key={adult.navn}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <h2 className="mb-3 font-semibold text-slate-800">
+                      {adult.navn}
+                      {adult.alder != null && (
+                        <span className="ml-2 text-sm font-normal text-slate-500">
+                          {adult.alder} år
+                        </span>
+                      )}
+                    </h2>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {SLOT_KEYS.map((slot) => {
+                        const chosen = draft[adult.navn]?.[slot] || "";
+                        const viaEscort = adultWorkshopSetViaChildEscort(
+                          adult.navn,
+                          slot,
+                          childrenInFamily,
+                          adultsInFamily,
+                          draft,
+                          externalEscorts
+                        );
+                        return (
+                          <label key={slot} className="block text-sm">
+                            <span className="mb-1 block font-medium text-slate-700">
+                              {SLOT_LABELS[slot]}
+                            </span>
+                            <select
+                              value={chosen}
+                              onChange={(e) =>
+                                setMemberWorkshopChoice(adult.navn, slot, e.target.value)
+                              }
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800"
+                            >
+                              <option value="">— Vælg —</option>
+                              {(options[slot] || []).map((opt) => (
+                                <option
+                                  key={opt.name}
+                                  value={opt.name}
+                                  disabled={
+                                    opt.soldOut || isWorkshopBlockedForMember(adult, opt.name)
+                                  }
+                                >
+                                  {optionLabel(opt, adult)}
+                                </option>
+                              ))}
+                            </select>
+                            {viaEscort && chosen && (
+                              <p className="mt-1 text-xs text-emerald-800">
+                                Forudfyldt fordi du følger et barn — du kan vælge om.
+                              </p>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
 
                 {error && <ErrorBox message={error} />}
 
