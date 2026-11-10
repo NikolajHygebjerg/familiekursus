@@ -21,9 +21,8 @@ export default function BetingelserPage() {
           <section>
             <h2 className="text-lg font-semibold text-slate-800">Hvem er dataansvarlig?</h2>
             <p>
-              Familiekursus på Brandbjerg (herefter «kursusledelsen») er dataansvarlig for de
-              oplysninger, I indtaster i familiekursus-appen, når I opretter en familie og tilmelder
-              workshops.
+              Brandbjerg Højskole (herefter «højskolen») er dataansvarlig for de oplysninger, I indtaster
+              i familiekursus-appen, når I opretter en familie og tilmelder workshops.
             </p>
           </section>
 
@@ -33,21 +32,20 @@ export default function BetingelserPage() {
             <ul className="list-disc space-y-1 pl-5">
               <li>Brugernavn og kode til login (koden gemmes, så I kan logge ind igen)</li>
               <li>Fornavn og alder på familiemedlemmer, I tilmelder</li>
-              <li>Workshopvalg, ledsagere og andre tilmeldinger I foretager i appen</li>
+              <li>Workshopvalg og andre tilmeldinger I foretager i appen</li>
             </ul>
             <p>
-              Vi bruger <strong>ikke</strong> e-mailadresse som brugernavn eller login i appen. Det
-              gør vi for at begrænse indsamling af personhenførbare kontaktoplysninger.
+              Vi bruger ikke e-mailadresse som brugernavn eller login i appen. Det gør vi for at
+              begrænse indsamling af personhenførbare kontaktoplysninger.
             </p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-slate-800">Hvor opbevares oplysningerne?</h2>
             <p>
-              Data lagres i en sikret database hos <strong>Supabase</strong> (hostet i EU), som
-              kursusledelsen bruger til at administrere familiekursus. Appen kører på{" "}
-              <strong>Vercel</strong> og henter kun de data, der er nødvendige for at vise jeres
-              tilmeldinger og program.
+              Data lagres i en sikret database hos Supabase (hostet i Frankfurt, Tyskland, EU), som
+              højskolen bruger til at administrere familiekursus. Appen kører på Vercel og henter kun de
+              data, der er nødvendige for at vise jeres tilmeldinger og program.
             </p>
             <p>
               Oplysningerne bruges udelukkende til planlægning og gennemførelse af familiekursus,
@@ -58,9 +56,8 @@ export default function BetingelserPage() {
           <section>
             <h2 className="text-lg font-semibold text-slate-800">Hvem kan se dataene?</h2>
             <p>
-              Jeres familie kan se egne tilmeldinger, når I er logget ind. Kursusledelsen og
-              autoriserede hjælpere kan se data i administrationsøjemed (fx workshopoversigt og
-              gruppefordeling).
+              Jeres familie kan se egne tilmeldinger, når I er logget ind. Højskolen og autoriserede
+              hjælpere kan se data i administrationsøjemed (fx workshopoversigt og gruppefordeling).
             </p>
           </section>
 
@@ -68,31 +65,37 @@ export default function BetingelserPage() {
             <h2 className="text-lg font-semibold text-slate-800">Opbevaring og sletning</h2>
             <p>
               Data opbevares, så længe det er nødvendigt for det aktuelle kursusår og den afvikling,
-              kursusledelsen er ansvarlig for. I kan afmelde jeres familie ved at logge ind med
-              koden <strong>Slet</strong>, hvorefter familiens deltagerdata og login kan fjernes fra
-              databasen, og workshoppladser frigives.
+              højskolen er ansvarlig for. I kan afmelde jeres familie ved at logge ind med koden Slet,
+              hvorefter familiens deltagerdata og login kan fjernes fra databasen, og workshoppladser
+              frigives.
             </p>
             <p>
-              Har I spørgsmål til jeres data eller ønsker rettelse/sletning uden at bruge «Slet»,
-              kan I kontakte kursusledelsen på Brandbjerg.
+              Har I spørgsmål til jeres data eller ønsker rettelse/sletning uden at bruge «Slet», kan I
+              kontakte kursuslederen på{" "}
+              <a
+                href="mailto:nh@brandbjerg.dk"
+                className="font-medium text-amber-700 underline hover:text-amber-800"
+              >
+                nh@brandbjerg.dk
+              </a>
+              .
             </p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-slate-800">Cookies og lokal lagring</h2>
             <p>
-              Appen gemmer jeres login lokalt i browseren (localStorage), så I ikke behøver logge ind
-              ved hvert besøg, når I bruger appen fra en enhed, I stoler på. Der sættes ikke
-              reklame-cookies via appen.
+              Appen gemmer jeres login lokalt i browseren (localStorage), så I ikke behøver logge ind ved
+              hvert besøg, når I bruger appen fra en enhed, I stoler på. Der sættes ikke reklame-cookies
+              via appen.
             </p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-slate-800">Accept</h2>
             <p>
-              Ved at afkrydse accept på «Opret familie» bekræfter I, at I har læst disse betingelser
-              og giver samtykke til, at oplysningerne behandles som beskrevet, for at I kan bruge
-              appen.
+              Ved at afkrydse accept på «Opret familie» bekræfter I, at I har læst disse betingelser og
+              giver samtykke til, at oplysningerne behandles som beskrevet, for at I kan bruge appen.
             </p>
           </section>
         </article>

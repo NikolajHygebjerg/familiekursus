@@ -1,5 +1,5 @@
 /** Versionsstempel — gemmes ved godkendelse. Opdater ved væsentlige ændringer. */
-export const USER_TERMS_VERSION = "2026-11-10";
+export const USER_TERMS_VERSION = "2026-11-10-bh";
 
 export const USER_TERMS_CHECKBOX_LABEL = "Jeg har læst og accepterer betingelserne for brug af appen";
 
