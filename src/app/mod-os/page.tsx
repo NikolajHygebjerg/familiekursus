@@ -12,6 +12,9 @@ export default function MoedOsPage() {
   const [people, setPeople] = useState<MoedOsPersonView[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [uploadEnabled, setUploadEnabled] = useState(false);
+  const [visibleToKursister, setVisibleToKursister] = useState(false);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusBySlug, setStatusBySlug] = useState<Record<string, string>>({});
@@ -40,6 +43,7 @@ export default function MoedOsPage() {
         setPeople(list);
         setIsSuperAdmin(Boolean(data?.isSuperAdmin));
         setUploadEnabled(Boolean(data?.uploadEnabled));
+        setVisibleToKursister(Boolean(data?.visibleToKursister));
         setNameDrafts(
           Object.fromEntries(list.map((person) => [person.slug, person.name]))
         );
@@ -166,6 +170,35 @@ export default function MoedOsPage() {
     }
   }
 
+  async function handleToggleKursistVisibility() {
+    if (!email || !isAdmin) return;
+    const next = !visibleToKursister;
+    setVisibilitySaving(true);
+    setVisibilityMessage(null);
+    try {
+      const res = await fetch("/api/moed-os", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, visibleToKursister: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setVisibleToKursister(next);
+      setVisibilityMessage(
+        next
+          ? "Mød os er nu synlig for kursister i appen."
+          : "Mød os er skjult for kursister."
+      );
+      loadPeople();
+    } catch (err) {
+      setVisibilityMessage(err instanceof Error ? err.message : "Kunne ikke gemme");
+    } finally {
+      setVisibilitySaving(false);
+    }
+  }
+
+  const showKursistPlaceholder = !isAdmin && !visibleToKursister;
+
   async function handleAddPerson(event: React.FormEvent) {
     event.preventDefault();
     if (!email || !isSuperAdmin) return;
@@ -202,7 +235,9 @@ export default function MoedOsPage() {
     <main className="mx-auto max-w-2xl px-4 py-6">
       <header className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-slate-800">Mød os</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">{pageDescription}</p>
+        {!showKursistPlaceholder && (
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">{pageDescription}</p>
+        )}
         {isAdmin && !uploadEnabled && (
           <p className="mt-3 text-xs text-amber-700">
             Billede-upload kræver forbundet Vercel Blob under Settings → Storage. Redeploy efter opsætning.
@@ -210,7 +245,41 @@ export default function MoedOsPage() {
         )}
       </header>
 
-      {isSuperAdmin && (
+      {isAdmin && (
+        <section className="mb-6 rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-sm text-slate-800 shadow-sm">
+          <p className="font-medium text-amber-950">
+            {visibleToKursister
+              ? "Siden er synlig for kursister i appen."
+              : "Siden er skjult for kursister — kun administratorer ser indholdet her."}
+          </p>
+          <p className="mt-2 text-slate-700">
+            Når du aktiverer siden, kan familier se hjælpere og undervisere under Mød os.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleToggleKursistVisibility()}
+            disabled={visibilitySaving}
+            className="mt-3 w-full rounded-lg bg-amber-500 px-4 py-2.5 font-medium text-white hover:bg-amber-600 disabled:opacity-50 sm:w-auto"
+          >
+            {visibilitySaving
+              ? "Gemmer..."
+              : visibleToKursister
+                ? "Skjul for kursister"
+                : "Aktivér for kursister"}
+          </button>
+          {visibilityMessage && (
+            <p className="mt-2 text-xs text-slate-600">{visibilityMessage}</p>
+          )}
+        </section>
+      )}
+
+      {showKursistPlaceholder && (
+        <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-base leading-relaxed text-slate-600 shadow-sm">
+          Her kommer du til at kunne se hvem der er hjælpere og undervisere på kurset.
+        </p>
+      )}
+
+      {!showKursistPlaceholder && isSuperAdmin && (
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-slate-800">Tilføj ny person</h2>
           <form onSubmit={handleAddPerson} className="space-y-3">
@@ -247,13 +316,15 @@ export default function MoedOsPage() {
         </section>
       )}
 
-      {loading && <p className="text-center text-slate-500">Henter...</p>}
+      {!showKursistPlaceholder && loading && (
+        <p className="text-center text-slate-500">Henter...</p>
+      )}
 
-      {error && (
+      {!showKursistPlaceholder && error && (
         <div className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
 
-      {!loading && !error && (
+      {!showKursistPlaceholder && !loading && !error && (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           {people.map((person) => (
             <li
@@ -364,13 +435,13 @@ export default function MoedOsPage() {
         </ul>
       )}
 
-      {isAdmin && isSuperAdmin && (
+      {!showKursistPlaceholder && isAdmin && isSuperAdmin && (
         <p className="mt-6 text-center text-xs text-slate-500">
           Som super-admin kan du tilføje, slette, ændre navne og uploade billeder for alle.
         </p>
       )}
 
-      {isAdmin && !isSuperAdmin && adminNavn && (
+      {!showKursistPlaceholder && isAdmin && !isSuperAdmin && adminNavn && (
         <p className="mt-6 text-center text-xs text-slate-500">
           Du kan uploade billede og skrive titel for din egen profil (matcher «{adminNavn}» i
           Brugere-tabellen).

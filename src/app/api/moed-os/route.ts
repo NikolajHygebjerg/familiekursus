@@ -16,6 +16,10 @@ import {
 } from "@/lib/moed-os";
 import { isBlobUploadConfigured } from "@/lib/blob-config";
 import { applyMoedOsBlobImages, getLatestMoedOsBlobPathBySlug } from "@/lib/moed-os-blobs";
+import {
+  getMoedOsVisibleToKursister,
+  setMoedOsVisibleToKursister,
+} from "@/lib/moed-os-page-settings";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +40,18 @@ export async function GET(request: Request) {
       adminNavn = bruger?.adminNavn ?? null;
     }
 
+    const visibleToKursister = await getMoedOsVisibleToKursister();
+
+    if (!isAdmin && !visibleToKursister) {
+      return NextResponse.json({
+        title: MOED_OS_TITLE,
+        people: [],
+        visibleToKursister: false,
+        isSuperAdmin: false,
+        uploadEnabled: false,
+      });
+    }
+
     const people = applyMoedOsBlobImages(
       buildMoedOsPersonViews(airtableState, email, adminNavn, isAdmin),
       await getLatestMoedOsBlobPathBySlug()
@@ -44,6 +60,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       title: MOED_OS_TITLE,
       people,
+      visibleToKursister,
       isSuperAdmin: isAdmin && isMoedOsSuperAdmin(email),
       uploadEnabled: isBlobUploadConfigured(),
     });
@@ -107,8 +124,24 @@ export async function PATCH(request: Request) {
     const name = body.name?.trim();
     const hasTitleField = body.title !== undefined && body.title !== null;
 
-    if (!email || !slug) {
-      return NextResponse.json({ error: "Email og slug mangler" }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: "Login mangler" }, { status: 400 });
+    }
+
+    if (typeof body.visibleToKursister === "boolean") {
+      const bruger = await getBrugerByEmail(email);
+      if (!bruger?.isAdmin) {
+        return NextResponse.json(
+          { error: "Kun administratorer kan ændre synlighed for kursister" },
+          { status: 403 }
+        );
+      }
+      await setMoedOsVisibleToKursister(body.visibleToKursister);
+      return NextResponse.json({ ok: true, visibleToKursister: body.visibleToKursister });
+    }
+
+    if (!slug) {
+      return NextResponse.json({ error: "Slug mangler" }, { status: 400 });
     }
 
     if (name) {
